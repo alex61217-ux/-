@@ -1072,39 +1072,38 @@ initFirebase();
     function subscribeCloudData() {
       if (!state.cloudReady || !state.db) return;
 
-      onSnapshot(collection(state.db, "artifacts", state.appId, "public", "data", "trainees"), (snap) => {
-        if (!snap.empty) {
-          snap.forEach((d) => {
-            const data = d.data();
-            state.trainees[d.id] = {
-              id: d.id,
-              name: data.name || "未命名學員",
-              empId: data.empId || "",
-              hireDate: data.hireDate || "",
-              mentor: data.mentor || "",
-              entries: data.entries || {},
-              updatedAt: data.updatedAt || ""
-            };
-          });
-          ensureDefaultTrainee();
-          saveLocalTrainees();
-          renderHeaderAndShared();
-          if (state.activeView === "TRAINING") renderTrainingView();
+      onSnapshot(
+        collection(state.db, "artifacts", state.appId, "public", "data", "trainees"),
+        (snap) => {
+          if (!snap.empty) {
+            snap.forEach((d) => {
+              const data = d.data();
+              state.trainees[d.id] = {
+                id: d.id,
+                name: data.name || "未命名學員",
+                empId: data.empId || "",
+                hireDate: data.hireDate || "",
+                mentor: data.mentor || "",
+                entries: data.entries || {},
+                updatedAt: data.updatedAt || ""
+              };
+            });
+          }
+          if (typeof renderHeaderAndShared === "function") {
+            renderHeaderAndShared();
+          }
+          if (state.activeView === "TRAINING") {
+            if (typeof renderTrainingView === "function") renderTrainingView();
+            if (typeof renderTrainingSummary === "function") renderTrainingSummary();
+          }
+        },
+        (err) => {
+          console.error("subscribeCloudData error:", err);
+          if (typeof showToast === "function") {
+            showToast("雲端監聽失敗：" + (err.code || err.message || err));
+          }
         }
-      });
-
-      onSnapshot(collection(state.db, "artifacts", APP_ID, "public", "data", "examBank"), (snap) => {
-        if (!snap.empty) {
-          snap.forEach((d) => {
-            if (EXAM_IDS.includes(d.id)) {
-              state.examBank[d.id] = d.data();
-            }
-          });
-          saveLocalExamBank();
-          if (state.activeView === "EXAM" && !state.activeExamId) renderExamLobby();
-          if (state.activeView === "ADMIN" && state.isAdminAuthenticated) renderAdminWorkspace();
-        }
-      });
+      );
 
       onSnapshot(collection(state.db, "artifacts", APP_ID, "public", "data", "examSubmissions"), (snap) => {
         if (!snap.empty) {
@@ -1132,20 +1131,25 @@ initFirebase();
       renderHeaderAndShared();
       if (state.activeView === "TRAINING") renderTrainingSummary();
 
-      if (!state.cloudReady || !state.db) return;
-      try {
-        await setDoc(doc(state.db, "artifacts", APP_ID, "public", "data", "trainees", t.id), {
-          name: t.name,
-          empId: t.empId || "",
-          hireDate: t.hireDate,
-          mentor: t.mentor,
-          entries: t.entries,
-          updatedAt: t.updatedAt
-        }, { merge: true });
-      } catch (err) {
-        console.error(err);
-      }
+      if (!state.cloudReady || !state.db) {
+      showToast("雲端尚未就緒，已暫存本機");
+      return;
     }
+    try {
+      await setDoc(doc(state.db, "artifacts", APP_ID, "public", "data", "trainees", t.id), {
+        name: t.name,
+        empId: t.empId || "",
+        hireDate: t.hireDate,
+        mentor: t.mentor,
+        entries: t.entries,
+        updatedAt: t.updatedAt
+      }, { merge: true });
+    } catch (err) {
+      console.error("persistCurrentTrainee error:", err);
+      showToast("雲端同步失敗：" + (err.code || err.message || "請檢查權限與網路"));
+    }
+  }
+
 
     async function persistExam(examId) {
       saveLocalExamBank();
