@@ -1048,7 +1048,7 @@
     if (typeof renderHeaderAndShared === "function") {
       renderHeaderAndShared();
     }
-    const syncTextEl = document.getElementById("syncText") || document.querySelector("[data-sync-status]");
+    const syncTextEl = document.getElementById("syncStatus") || document.getElementById("syncText") || document.querySelector("[data-sync-status]");
     if (syncTextEl) {
       syncTextEl.textContent = "雲端已連線（免登入）";
     }
@@ -1059,7 +1059,7 @@
     }
   } catch (err) {
     console.error("Firebase init error:", err);
-    const syncTextEl = document.getElementById("syncText") || document.querySelector("[data-sync-status]");
+    const syncTextEl = document.getElementById("syncStatus") || document.getElementById("syncText") || document.querySelector("[data-sync-status]");
     if (syncTextEl) {
       syncTextEl.textContent = "雲端連線失敗：" + (err.code || err.message || err);
     }
@@ -1067,6 +1067,7 @@
 }
 
 initFirebase();
+
 
     function subscribeCloudData() {
       if (!state.cloudReady || !state.db) return;
