@@ -1042,12 +1042,17 @@
     const db = getFirestore(app);
 
     await signInAnonymously(auth);
-    }
-
+    state.db = db;
+    state.cloudReady = true;
+    subscribeCloudData();
+   } catch (err) {
+    console.error("Firebase init error:", err);
+   }
+  }
     function subscribeCloudData() {
       if (!state.cloudReady || !state.db) return;
 
-      onSnapshot(collection(state.db, "artifacts", APP_ID, "public", "data", "trainees"), (snap) => {
+      onSnapshot(collection(state.db, "artifacts", state.appId, "public", "data", "trainees"), (snap) => {
         if (!snap.empty) {
           snap.forEach((d) => {
             const data = d.data();
