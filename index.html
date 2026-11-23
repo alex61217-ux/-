@@ -1041,18 +1041,33 @@
     const auth = getAuth(app);
     const db = getFirestore(app);
 
-    await signInAnonymously(auth);
+   await signInAnonymously(auth);
     state.db = db;
     state.cloudReady = true;
-   subscribeCloudData();
-    renderHeaderAndShared();
-   } catch (err) {
+    subscribeCloudData();
+    if (typeof renderHeaderAndShared === "function") {
+      renderHeaderAndShared();
+    }
+    const syncTextEl = document.getElementById("syncText") || document.querySelector("[data-sync-status]");
+    if (syncTextEl) {
+      syncTextEl.textContent = "雲端已連線（免登入）";
+    }
+    const syncDotEl = document.getElementById("syncDot") || document.querySelector("[data-sync-dot]");
+    if (syncDotEl) {
+      syncDotEl.classList.remove("bg-amber-400", "animate-pulse");
+      syncDotEl.classList.add("bg-emerald-500");
+    }
+  } catch (err) {
     console.error("Firebase init error:", err);
     const syncTextEl = document.getElementById("syncText") || document.querySelector("[data-sync-status]");
-    if (syncTextEl) syncTextEl.textContent = "雲端連線失敗：" + (err.code || err.message || err);
-   }
+    if (syncTextEl) {
+      syncTextEl.textContent = "雲端連線失敗：" + (err.code || err.message || err);
+    }
   }
-    initFirebase();
+}
+
+initFirebase();
+
     function subscribeCloudData() {
       if (!state.cloudReady || !state.db) return;
 
