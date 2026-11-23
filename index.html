@@ -1044,9 +1044,12 @@
     await signInAnonymously(auth);
     state.db = db;
     state.cloudReady = true;
-    subscribeCloudData();
+   subscribeCloudData();
+    renderHeaderAndShared();
    } catch (err) {
     console.error("Firebase init error:", err);
+    const syncTextEl = document.getElementById("syncText") || document.querySelector("[data-sync-status]");
+    if (syncTextEl) syncTextEl.textContent = "雲端連線失敗：" + (err.code || err.message || err);
    }
   }
     initFirebase();
