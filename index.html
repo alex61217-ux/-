@@ -1022,52 +1022,23 @@
     }
 
     async function initFirebase() {
-  try {
-    const firebaseConfig = {
-      apiKey: "AIzaSyB6sL2VRxoizIbbLqX0hrx3G0YZQyKRTBs",
-      authDomain: "gym-inspection.firebaseapp.com",
-      databaseURL: "https://gym-inspection-default-rtdb.asia-southeast1.firebasedatabase.app",
-      projectId: "gym-inspection",
-      storageBucket: "gym-inspection.firebasestorage.app",
-      messagingSenderId: "492275565622",
-      appId: "1:492275565622:web:f8683fbd8e9e26b2de0497",
-      measurementId: "G-X4BTF7CZ4X"
-    };
+      try {
+        state.appId = APP_ID;
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
 
-    const appId = "gym-inspection-app";
-    state.appId = appId;
-
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const db = getFirestore(app);
-
-   await signInAnonymously(auth);
-    state.db = db;
-    state.cloudReady = true;
-    subscribeCloudData();
-    if (typeof renderHeaderAndShared === "function") {
-      renderHeaderAndShared();
+        await signInAnonymously(auth);
+        state.db = db;
+        state.cloudReady = true;
+        subscribeCloudData();
+        renderHeaderAndShared();
+        setSyncBadge("ok", "雲端已連線（免登入）");
+      } catch (err) {
+        console.error("Firebase init error:", err);
+        setSyncBadge("err", "雲端連線失敗：" + (err.code || err.message || err));
+      }
     }
-    const syncTextEl = document.getElementById("syncStatus") || document.getElementById("syncText") || document.querySelector("[data-sync-status]");
-    if (syncTextEl) {
-      syncTextEl.textContent = "雲端已連線（免登入）";
-    }
-    const syncDotEl = document.getElementById("syncDot") || document.querySelector("[data-sync-dot]");
-    if (syncDotEl) {
-      syncDotEl.classList.remove("bg-amber-400", "animate-pulse");
-      syncDotEl.classList.add("bg-emerald-500");
-    }
-  } catch (err) {
-    console.error("Firebase init error:", err);
-    const syncTextEl = document.getElementById("syncStatus") || document.getElementById("syncText") || document.querySelector("[data-sync-status]");
-    if (syncTextEl) {
-      syncTextEl.textContent = "雲端連線失敗：" + (err.code || err.message || err);
-    }
-  }
-}
-
-initFirebase();
-
 
     function subscribeCloudData() {
       if (!state.cloudReady || !state.db) return;
@@ -1088,24 +1059,24 @@ initFirebase();
                 updatedAt: data.updatedAt || ""
               };
             });
+            saveLocalTrainees();
           }
-          if (typeof renderHeaderAndShared === "function") {
-            renderHeaderAndShared();
-          }
+          renderHeaderAndShared();
           if (state.activeView === "TRAINING") {
-            if (typeof renderTrainingView === "function") renderTrainingView();
-            if (typeof renderTrainingSummary === "function") renderTrainingSummary();
+            renderTrainingView();
+            renderTrainingSummary();
+          }
+          if (state.activeView === "EXAM" && !state.activeExamId) {
+            renderExamLobby();
           }
         },
         (err) => {
           console.error("subscribeCloudData error:", err);
-          if (typeof showToast === "function") {
-            showToast("雲端監聽失敗：" + (err.code || err.message || err));
-          }
+          showToast("雲端監聽失敗：" + (err.code || err.message || err));
         }
       );
 
-      onSnapshot(collection(state.db, "artifacts", APP_ID, "public", "data", "examSubmissions"), (snap) => {
+      onSnapshot(collection(state.db, "artifacts", state.appId, "public", "data", "examSubmissions"), (snap) => {
         if (!snap.empty) {
           snap.forEach((d) => {
             state.submissions[d.id] = d.data();
@@ -1116,7 +1087,7 @@ initFirebase();
         }
       });
 
-      onSnapshot(doc(state.db, "artifacts", APP_ID, "public", "data", "settings", "adminConfig"), (docSnap) => {
+      onSnapshot(doc(state.db, "artifacts", state.appId, "public", "data", "settings", "adminConfig"), (docSnap) => {
         if (docSnap.exists() && docSnap.data().adminPassword) {
           state.adminPassword = docSnap.data().adminPassword;
           try { localStorage.setItem(ADMIN_PWD_STORAGE_KEY, state.adminPassword); } catch {}
@@ -1132,30 +1103,29 @@ initFirebase();
       if (state.activeView === "TRAINING") renderTrainingSummary();
 
       if (!state.cloudReady || !state.db) {
-      showToast("雲端尚未就緒，已暫存本機");
-      return;
+        showToast("雲端尚未就緒，已暫存本機");
+        return;
+      }
+      try {
+        await setDoc(doc(state.db, "artifacts", state.appId, "public", "data", "trainees", t.id), {
+          name: t.name,
+          empId: t.empId || "",
+          hireDate: t.hireDate,
+          mentor: t.mentor,
+          entries: t.entries,
+          updatedAt: t.updatedAt
+        }, { merge: true });
+      } catch (err) {
+        console.error("persistCurrentTrainee error:", err);
+        showToast("雲端同步失敗：" + (err.code || err.message || "請檢查權限與網路"));
+      }
     }
-    try {
-      await setDoc(doc(state.db, "artifacts", APP_ID, "public", "data", "trainees", t.id), {
-        name: t.name,
-        empId: t.empId || "",
-        hireDate: t.hireDate,
-        mentor: t.mentor,
-        entries: t.entries,
-        updatedAt: t.updatedAt
-      }, { merge: true });
-    } catch (err) {
-      console.error("persistCurrentTrainee error:", err);
-      showToast("雲端同步失敗：" + (err.code || err.message || "請檢查權限與網路"));
-    }
-  }
-
 
     async function persistExam(examId) {
       saveLocalExamBank();
       if (!state.cloudReady || !state.db) return;
       try {
-        await setDoc(doc(state.db, "artifacts", APP_ID, "public", "data", "examBank", examId), state.examBank[examId]);
+        await setDoc(doc(state.db, "artifacts", state.appId, "public", "data", "examBank", examId), state.examBank[examId]);
       } catch (err) {
         console.error(err);
         showToast("題庫雲端同步失敗，已暫存本機");
@@ -1167,7 +1137,7 @@ initFirebase();
       saveLocalSubmissions();
       if (!state.cloudReady || !state.db) return;
       try {
-        await setDoc(doc(state.db, "artifacts", APP_ID, "public", "data", "examSubmissions", sub.id), sub, { merge: true });
+        await setDoc(doc(state.db, "artifacts", state.appId, "public", "data", "examSubmissions", sub.id), sub, { merge: true });
       } catch (err) {
         console.error(err);
         showToast("考卷雲端儲存失敗，已暫存本機");
@@ -2220,104 +2190,108 @@ initFirebase();
               <input type="text" value="${escapeHtml(q.explanation || "")}" data-ed-exp="${idx}"
                 class="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700" />
             </div>
-
-            <div class="flex justify-end">
-              <button type="button" data-ed-save="${idx}" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold">
-                儲存此題變更
-              </button>
-            </div>
           </div>
         `;
       }).join("");
 
-      const readQuestionFromDom = (qIdx) => {
-        const orig = ex.questions[qIdx];
-        const newType = els.editorQuestionsContainer.querySelector(`select[data-ed-type="${qIdx}"]`).value;
-        const newPts = Math.max(1, Number(els.editorQuestionsContainer.querySelector(`input[data-ed-pts="${qIdx}"]`).value) || 5);
-        const newText = els.editorQuestionsContainer.querySelector(`input[data-ed-qtext="${qIdx}"]`).value.trim();
-        const newExp = els.editorQuestionsContainer.querySelector(`input[data-ed-exp="${qIdx}"]`).value.trim();
-
-        const updated = {
-          id: orig.id,
-          type: newType,
-          points: newPts,
-          question: newText || orig.question,
-          explanation: newExp
-        };
-
-        if (newType === "mcq") {
-          const opts = [0, 1, 2, 3].map((oIdx) => {
-            const inp = els.editorQuestionsContainer.querySelector(`input[data-ed-opt="${qIdx}"][data-opt-idx="${oIdx}"]`);
-            return inp ? inp.value.trim() : (orig.options?.[oIdx] || `選項 ${oIdx + 1}`);
-          });
-          let corr = 0;
-          els.editorQuestionsContainer.querySelectorAll(`input[data-ed-corr="${qIdx}"]`).forEach((r) => {
-            if (r.checked) corr = Number(r.dataset.optIdx);
-          });
-          updated.options = opts;
-          updated.correctIndex = corr;
-        } else if (newType === "order") {
-          const ta = els.editorQuestionsContainer.querySelector(`textarea[data-ed-steps="${qIdx}"]`);
-          const lines = ta
-            ? ta.value.split("\n").map((s) => s.trim()).filter(Boolean)
-            : (orig.steps || ["步驟一", "步驟二", "步驟三"]);
-          updated.steps = lines.length >= 2 ? lines : ["步驟一", "步驟二"];
-        } else {
-          const ta = els.editorQuestionsContainer.querySelector(`textarea[data-ed-answer="${qIdx}"]`);
-          updated.answer = ta ? ta.value.trim() : (orig.answer || "");
-        }
-        return updated;
-      };
-
       els.editorQuestionsContainer.querySelectorAll("select[data-ed-type]").forEach((sel) => {
         sel.addEventListener("change", async () => {
-          const qIdx = Number(sel.dataset.edType);
-          const draft = readQuestionFromDom(qIdx);
-          if (draft.type === "mcq" && !draft.options) {
-            draft.options = ["選項 A", "選項 B", "選項 C", "選項 D"];
-            draft.correctIndex = 0;
+          const idx = Number(sel.dataset.edType);
+          const newType = sel.value;
+          const q = state.examBank[eid].questions[idx];
+          q.type = newType;
+          if (newType === "mcq" && !Array.isArray(q.options)) {
+            q.options = ["選項 A", "選項 B", "選項 C", "選項 D"];
+            q.correctIndex = 0;
           }
-          if (draft.type === "order" && !draft.steps) {
-            draft.steps = ["第一步", "第二步", "第三步"];
+          if (newType === "order" && !Array.isArray(q.steps)) {
+            q.steps = ["步驟一", "步驟二", "步驟三"];
           }
-          if (draft.type === "short" && !draft.answer) {
-            draft.answer = "請填寫標準答案";
+          if (newType === "short" && !q.answer) {
+            q.answer = "請依會所標準 SOP 填寫。";
           }
-          ex.questions[qIdx] = draft;
           await persistExam(eid);
           renderAdminEditor();
         });
       });
 
-      els.editorQuestionsContainer.querySelectorAll("button[data-ed-save]").forEach((btn) => {
-        btn.addEventListener("click", async () => {
-          const qIdx = Number(btn.dataset.edSave);
-          ex.questions[qIdx] = readQuestionFromDom(qIdx);
+      els.editorQuestionsContainer.querySelectorAll("input[data-ed-pts]").forEach((inp) => {
+        inp.addEventListener("change", async () => {
+          const idx = Number(inp.dataset.edPts);
+          state.examBank[eid].questions[idx].points = Math.max(1, Number(inp.value) || 5);
           await persistExam(eid);
-          showToast(`已儲存第 ${qIdx + 1} 題變更`);
           renderAdminEditor();
+        });
+      });
+
+      els.editorQuestionsContainer.querySelectorAll("input[data-ed-qtext]").forEach((inp) => {
+        inp.addEventListener("change", async () => {
+          const idx = Number(inp.dataset.edQtext);
+          state.examBank[eid].questions[idx].question = inp.value;
+          await persistExam(eid);
+        });
+      });
+
+      els.editorQuestionsContainer.querySelectorAll("input[data-ed-exp]").forEach((inp) => {
+        inp.addEventListener("change", async () => {
+          const idx = Number(inp.dataset.edExp);
+          state.examBank[eid].questions[idx].explanation = inp.value;
+          await persistExam(eid);
+        });
+      });
+
+      els.editorQuestionsContainer.querySelectorAll("input[data-ed-opt]").forEach((inp) => {
+        inp.addEventListener("change", async () => {
+          const idx = Number(inp.dataset.edOpt);
+          const oIdx = Number(inp.dataset.optIdx);
+          state.examBank[eid].questions[idx].options[oIdx] = inp.value;
+          await persistExam(eid);
+        });
+      });
+
+      els.editorQuestionsContainer.querySelectorAll("input[data-ed-corr]").forEach((radio) => {
+        radio.addEventListener("change", async () => {
+          const idx = Number(radio.dataset.edCorr);
+          const oIdx = Number(radio.dataset.optIdx);
+          state.examBank[eid].questions[idx].correctIndex = oIdx;
+          await persistExam(eid);
+        });
+      });
+
+      els.editorQuestionsContainer.querySelectorAll("textarea[data-ed-steps]").forEach((ta) => {
+        ta.addEventListener("change", async () => {
+          const idx = Number(ta.dataset.edSteps);
+          const lines = ta.value.split("\n").map((s) => s.trim()).filter(Boolean);
+          state.examBank[eid].questions[idx].steps = lines.length > 0 ? lines : ["步驟一", "步驟二"];
+          await persistExam(eid);
+        });
+      });
+
+      els.editorQuestionsContainer.querySelectorAll("textarea[data-ed-answer]").forEach((ta) => {
+        ta.addEventListener("change", async () => {
+          const idx = Number(ta.dataset.edAnswer);
+          state.examBank[eid].questions[idx].answer = ta.value;
+          await persistExam(eid);
         });
       });
 
       els.editorQuestionsContainer.querySelectorAll("button[data-ed-del]").forEach((btn) => {
         btn.addEventListener("click", async () => {
-          const qIdx = Number(btn.dataset.edDel);
-          ex.questions.splice(qIdx, 1);
+          const idx = Number(btn.dataset.edDel);
+          state.examBank[eid].questions.splice(idx, 1);
           await persistExam(eid);
-          showToast("已刪除該題目");
           renderAdminEditor();
+          showToast("已刪除該題目");
         });
       });
     }
 
     // =========================================================================
-    // CSV EXPORT HELPERS
+    // CSV EXPORTS
     // =========================================================================
-    function downloadCsv(filename, headers, rows) {
-      const escapeCell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-      const lines = [headers.map(escapeCell).join(",")];
-      rows.forEach((r) => lines.push(r.map(escapeCell).join(",")));
-      const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+    function downloadCsv(filename, rows) {
+      const csv = "\uFEFF" + rows.map((r) => r.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -2326,322 +2300,319 @@ initFirebase();
       URL.revokeObjectURL(url);
     }
 
-    function exportTrainingCsv() {
+    els.exportTrainingCsvBtn.addEventListener("click", () => {
       const t = getCurrentTrainee();
-      const headers = ["學員姓名/英文名", "員工編號", "到職日", "小老師(負責人)", "階段", "線上課程", "單元", "項目編號", "訓練項目", "完成狀態", "完成日期", "負責人", "培訓複檢", "主任複檢"];
-      const rows = TRAINING_ITEMS.map((it) => {
+      const rows = [["學員姓名/英文名", "員工編號", "到職日", "小老師(負責人)", "階段", "單元", "線上課程", "原編號", "訓練項目", "已完成", "完成日期", "負責人", "培訓複檢", "主任複檢"]];
+      TRAINING_ITEMS.forEach((it) => {
         const e = t.entries[it.id] || {};
-        return [
-          t.name,
-          t.empId || "",
-          t.hireDate || "",
-          t.mentor || "",
-          it.stageLabel,
-          it.onlineCourse,
-          it.module,
-          it.origNum,
-          it.item,
-          e.checked ? "已完成" : "未完成",
-          e.doneDate || "",
-          e.owner || t.mentor || "",
-          e.trainerChecked ? "已複檢" : "",
-          e.directorChecked ? "已複檢" : ""
-        ];
+        rows.push([
+          t.name || "", t.empId || "", t.hireDate || "", t.mentor || "",
+          it.stageLabel, it.module, it.onlineCourse, it.origNum, it.item,
+          e.checked ? "V" : "", e.doneDate || "", e.owner || t.mentor || "",
+          e.trainerChecked ? "V" : "", e.directorChecked ? "V" : ""
+        ]);
       });
-      downloadCsv(`${t.name || "學員"}_訓練進度表_${getTodayString()}.csv`, headers, rows);
+      downloadCsv(`WorldGym板橋雙十_客服訓練進度_${t.name || "學員"}_${getTodayString()}.csv`, rows);
       showToast("已匯出訓練進度 CSV");
-    }
+    });
 
-    function exportAllResultsCsv() {
-      const subs = Object.values(state.submissions);
-      const headers = ["交卷時間", "考卷代號", "考卷名稱", "應考人(英文名)", "員工編號", "小老師", "客觀題得分", "簡答題得分", "總分", "滿分", "批改狀態"];
-      const rows = subs.map((s) => [
-        s.submittedAt,
-        s.examId,
-        s.examTitle,
-        s.traineeName,
-        s.empId || "",
-        s.mentor || "",
-        s.autoScore,
-        s.essayScore || 0,
-        s.totalScore,
-        s.maxScore,
-        s.essayGraded ? "已完成" : "待批改簡答"
-      ]);
-      downloadCsv(`板橋雙十客服_全體考核成績_${getTodayString()}.csv`, headers, rows);
+    els.exportAllResultsCsvBtn.addEventListener("click", () => {
+      const rows = [["交卷時間", "考卷編號", "考卷名稱", "學員姓名/英文名", "員工編號", "小老師", "客觀題得分", "簡答題得分", "總分", "滿分", "簡答審閱狀態", "作答秒數"]];
+      Object.values(state.submissions)
+        .sort((a, b) => (b.submittedAt || "").localeCompare(a.submittedAt || ""))
+        .forEach((s) => {
+          rows.push([
+            s.submittedAt || "", s.examId || "", s.examTitle || "", s.traineeName || "",
+            s.empId || "", s.mentor || "", s.autoScore ?? 0, s.essayScore ?? 0,
+            s.totalScore ?? 0, s.maxScore ?? 100, s.essayGraded ? "已批改" : "待批改", s.timeSpentSec ?? 0
+          ]);
+        });
+      downloadCsv(`WorldGym板橋雙十_全體考核成績_${getTodayString()}.csv`, rows);
       showToast("已匯出全體考核成績 CSV");
-    }
+    });
 
     // =========================================================================
-    // EVENT BINDINGS
+    // EVENT LISTENERS WIRING
     // =========================================================================
-    function bindEvents() {
-      window.addEventListener("resize", syncStickyOffsets);
+    els.openPortalBtn.addEventListener("click", () => switchView("PORTAL"));
+    els.navTrainingBtn.addEventListener("click", () => switchView("TRAINING"));
+    els.navExamBtn.addEventListener("click", () => switchView("EXAM"));
+    els.navAdminBtn.addEventListener("click", () => switchView("ADMIN"));
 
-      els.openPortalBtn.addEventListener("click", () => switchView("PORTAL"));
-      els.portalGoTrainingBtn.addEventListener("click", () => switchView("TRAINING"));
-      els.portalGoExamBtn.addEventListener("click", () => switchView("EXAM"));
-      els.portalGoAdminBtn.addEventListener("click", () => switchView("ADMIN"));
+    els.portalGoTrainingBtn.addEventListener("click", () => switchView("TRAINING"));
+    els.portalGoExamBtn.addEventListener("click", () => switchView("EXAM"));
+    els.portalGoAdminBtn.addEventListener("click", () => switchView("ADMIN"));
 
-      els.navTrainingBtn.addEventListener("click", () => switchView("TRAINING"));
-      els.navExamBtn.addEventListener("click", () => switchView("EXAM"));
-      els.navAdminBtn.addEventListener("click", () => switchView("ADMIN"));
+    els.traineeSelect.addEventListener("change", () => {
+      state.activeTraineeId = els.traineeSelect.value;
+      saveLocalTrainees();
+      renderHeaderAndShared();
+      if (state.activeView === "TRAINING") renderTrainingView();
+      if (state.activeView === "EXAM" && !state.activeExamId) renderExamLobby();
+    });
 
-      els.traineeSelect.addEventListener("change", () => {
-        state.activeTraineeId = els.traineeSelect.value;
-        saveLocalTrainees();
-        renderHeaderAndShared();
-        if (state.activeView === "TRAINING") renderTrainingView();
-        if (state.activeView === "EXAM" && !state.activeExamId) renderExamLobby();
-      });
-
-      els.newTraineeBtn.addEventListener("click", () => {
-        const idx = Object.keys(state.trainees).length + 1;
-        const id = `trainee_${Date.now()}`;
-        state.trainees[id] = {
-          id,
-          name: `新進客服專員 ${idx}`,
-          empId: "",
-          hireDate: getTodayString(),
-          mentor: "",
-          entries: {},
-          updatedAt: nowTimeString()
-        };
-        state.activeTraineeId = id;
-        persistCurrentTrainee();
-        renderHeaderAndShared();
-        if (state.activeView === "TRAINING") renderTrainingView();
-        showToast("已建立新學員檔案");
-      });
-
-      els.traineeNameInput.addEventListener("change", () => {
-        getCurrentTrainee().name = els.traineeNameInput.value.trim() || "未命名學員";
-        persistCurrentTrainee();
-      });
-
-      els.empIdInput.addEventListener("change", () => {
-        getCurrentTrainee().empId = els.empIdInput.value.trim();
-        persistCurrentTrainee();
-      });
-
-      els.hireDateInput.addEventListener("change", () => {
-        getCurrentTrainee().hireDate = els.hireDateInput.value;
-        persistCurrentTrainee();
-      });
-
-      els.mentorInput.addEventListener("change", () => {
-        syncMentorAsOwner(getCurrentTrainee(), els.mentorInput.value);
-        persistCurrentTrainee();
-        if (state.activeView === "TRAINING") renderTrainingView();
-        showToast("已同步小老師＝負責人");
-      });
-
-      const applyTrainingQuick = () => {
-        const t = getCurrentTrainee();
-        const eng = els.quickEngNameInput.value.trim();
-        const mentor = els.quickMentorOwnerInput.value.trim();
-        if (eng) t.name = eng;
-        syncMentorAsOwner(t, mentor);
-        persistCurrentTrainee();
-        renderTrainingView();
-        showToast("已將英文名字與小老師（＝負責人）帶入進度表");
+    els.newTraineeBtn.addEventListener("click", async () => {
+      const count = Object.keys(state.trainees).length + 1;
+      const newId = `trainee_${Date.now()}`;
+      const prevMentor = getCurrentTrainee().mentor || "";
+      state.trainees[newId] = {
+        id: newId,
+        name: `新進客服專員 ${count}`,
+        empId: "",
+        hireDate: getTodayString(),
+        mentor: prevMentor,
+        entries: {},
+        updatedAt: nowTimeString()
       };
-      els.applyTrainingQuickBtn.addEventListener("click", applyTrainingQuick);
-      els.quickEngNameInput.addEventListener("change", applyTrainingQuick);
-      els.quickMentorOwnerInput.addEventListener("change", applyTrainingQuick);
+      if (prevMentor) syncMentorAsOwner(state.trainees[newId], prevMentor);
+      state.activeTraineeId = newId;
+      saveLocalTrainees();
+      renderHeaderAndShared();
+      if (state.activeView === "TRAINING") renderTrainingView();
+      if (state.activeView === "EXAM" && !state.activeExamId) renderExamLobby();
+      await persistCurrentTrainee();
+      showToast("已建立新學員檔案");
+    });
 
-      els.startSelectedExamBtn.addEventListener("click", () => {
-        validateAndStartExam(els.examItemSelect.value);
-      });
+    els.traineeNameInput.addEventListener("change", () => {
+      const t = getCurrentTrainee();
+      t.name = els.traineeNameInput.value.trim() || "未命名學員";
+      persistCurrentTrainee();
+    });
 
-      els.exportTrainingCsvBtn.addEventListener("click", exportTrainingCsv);
-      els.searchInput.addEventListener("input", () => { state.search = els.searchInput.value; renderTrainingView(); });
-      els.moduleFilterSelect.addEventListener("change", () => { state.activeModule = els.moduleFilterSelect.value; renderTrainingView(); });
+    els.empIdInput.addEventListener("change", () => {
+      const t = getCurrentTrainee();
+      t.empId = els.empIdInput.value.trim();
+      persistCurrentTrainee();
+    });
 
-      els.statusFilterGroup.querySelectorAll("button[data-filter]").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          state.statusFilter = btn.dataset.filter;
-          renderTrainingView();
-        });
-      });
+    els.hireDateInput.addEventListener("change", () => {
+      const t = getCurrentTrainee();
+      t.hireDate = els.hireDateInput.value;
+      persistCurrentTrainee();
+    });
 
-      els.batchCompleteBtn.addEventListener("click", () => {
-        const t = getCurrentTrainee();
-        getFilteredItems().forEach((it) => {
-          const prev = t.entries[it.id] || {};
-          t.entries[it.id] = { ...prev, checked: true, doneDate: prev.doneDate || getTodayString(), owner: t.mentor || prev.owner || "" };
-        });
-        persistCurrentTrainee();
+    els.mentorInput.addEventListener("change", () => {
+      const t = getCurrentTrainee();
+      syncMentorAsOwner(t, els.mentorInput.value);
+      persistCurrentTrainee();
+      if (state.activeView === "TRAINING") renderTrainingView();
+      showToast("已設定小老師（＝負責人）並同步帶入");
+    });
+
+    const applyQuickTrainingInfo = () => {
+      const t = getCurrentTrainee();
+      const eng = els.quickEngNameInput.value.trim();
+      const mentor = els.quickMentorOwnerInput.value.trim();
+      if (eng) t.name = eng;
+      syncMentorAsOwner(t, mentor);
+      persistCurrentTrainee();
+      if (state.activeView === "TRAINING") renderTrainingView();
+      showToast("已帶入英文名字與小老師（＝負責人）");
+    };
+    els.applyTrainingQuickBtn.addEventListener("click", applyQuickTrainingInfo);
+    els.quickEngNameInput.addEventListener("change", applyQuickTrainingInfo);
+    els.quickMentorOwnerInput.addEventListener("change", applyQuickTrainingInfo);
+
+    els.startSelectedExamBtn.addEventListener("click", () => {
+      validateAndStartExam(els.examItemSelect.value);
+    });
+
+    els.searchInput.addEventListener("input", () => {
+      state.search = els.searchInput.value;
+      renderTrainingView();
+    });
+
+    els.moduleFilterSelect.addEventListener("change", () => {
+      state.activeModule = els.moduleFilterSelect.value;
+      renderTrainingView();
+    });
+
+    els.statusFilterGroup.querySelectorAll("button[data-filter]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        state.statusFilter = btn.dataset.filter;
         renderTrainingView();
-        showToast("已將本篩選項目全數打勾");
       });
+    });
 
-      els.batchTrainerBtn.addEventListener("click", () => {
-        const t = getCurrentTrainee();
-        getFilteredItems().forEach((it) => {
-          const prev = t.entries[it.id] || {};
-          t.entries[it.id] = { ...prev, checked: true, doneDate: prev.doneDate || getTodayString(), owner: t.mentor || prev.owner || "", trainerChecked: true };
-        });
-        persistCurrentTrainee();
-        renderTrainingView();
-        showToast("已完成本篩選培訓複檢");
+    els.batchCompleteBtn.addEventListener("click", () => {
+      const t = getCurrentTrainee();
+      const list = getFilteredItems();
+      list.forEach((it) => {
+        const prev = t.entries[it.id] || {};
+        t.entries[it.id] = { ...prev, checked: true, doneDate: prev.doneDate || getTodayString(), owner: t.mentor || prev.owner || "" };
       });
+      persistCurrentTrainee();
+      renderTrainingView();
+      showToast(`已將篩選出的 ${list.length} 項全數打勾`);
+    });
 
-      els.batchDirectorBtn.addEventListener("click", () => {
-        const t = getCurrentTrainee();
-        getFilteredItems().forEach((it) => {
-          const prev = t.entries[it.id] || {};
-          t.entries[it.id] = { ...prev, checked: true, doneDate: prev.doneDate || getTodayString(), owner: t.mentor || prev.owner || "", trainerChecked: true, directorChecked: true };
-        });
-        persistCurrentTrainee();
-        renderTrainingView();
-        showToast("已完成本篩選主任複檢");
+    els.batchTrainerBtn.addEventListener("click", () => {
+      const t = getCurrentTrainee();
+      const list = getFilteredItems();
+      list.forEach((it) => {
+        const prev = t.entries[it.id] || {};
+        t.entries[it.id] = { ...prev, checked: true, doneDate: prev.doneDate || getTodayString(), owner: t.mentor || prev.owner || "", trainerChecked: true };
       });
+      persistCurrentTrainee();
+      renderTrainingView();
+      showToast(`已完成 ${list.length} 項培訓複檢`);
+    });
 
-      els.cancelExamBtn.addEventListener("click", () => {
-        clearInterval(state.examTimerInterval);
-        state.activeExamId = null;
-        els.examRunnerCard.classList.add("hidden");
-        els.examLobbyCard.classList.remove("hidden");
-        renderExamLobby();
+    els.batchDirectorBtn.addEventListener("click", () => {
+      const t = getCurrentTrainee();
+      const list = getFilteredItems();
+      list.forEach((it) => {
+        const prev = t.entries[it.id] || {};
+        t.entries[it.id] = { ...prev, checked: true, doneDate: prev.doneDate || getTodayString(), owner: t.mentor || prev.owner || "", trainerChecked: true, directorChecked: true };
       });
+      persistCurrentTrainee();
+      renderTrainingView();
+      showToast(`已完成 ${list.length} 項主任複檢`);
+    });
 
-      els.submitExamBtn.addEventListener("click", submitActiveExam);
+    els.cancelExamBtn.addEventListener("click", () => {
+      clearInterval(state.examTimerInterval);
+      state.activeExamId = null;
+      els.examRunnerCard.classList.add("hidden");
+      els.examLobbyCard.classList.remove("hidden");
+      renderExamLobby();
+    });
 
-      els.backToExamLobbyBtn.addEventListener("click", () => {
-        els.examResultCard.classList.add("hidden");
-        els.examLobbyCard.classList.remove("hidden");
-        renderExamLobby();
-      });
+    els.submitExamBtn.addEventListener("click", submitActiveExam);
 
-      els.onlyWrongToggle.addEventListener("change", () => {
-        state.onlyWrongReview = els.onlyWrongToggle.checked;
-        if (state.lastResultSubId) showExamResult(state.lastResultSubId);
-      });
+    els.backToExamLobbyBtn.addEventListener("click", () => {
+      els.examResultCard.classList.add("hidden");
+      els.examLobbyCard.classList.remove("hidden");
+      renderExamLobby();
+    });
 
-      els.adminLoginBtn.addEventListener("click", () => {
-        const inputPwd = els.adminPasswordInput.value.trim();
-        if (inputPwd === state.adminPassword) {
-          state.isAdminAuthenticated = true;
-          try { localStorage.setItem(ADMIN_AUTH_STORAGE_KEY, "true"); } catch {}
-          els.adminPasswordInput.value = "";
-          renderHeaderAndShared();
-          renderAdminView();
-          showToast("主管權限驗證成功");
-        } else {
-          showToast("密碼錯誤，請重新輸入");
-        }
-      });
+    els.onlyWrongToggle.addEventListener("change", () => {
+      state.onlyWrongReview = els.onlyWrongToggle.checked;
+      if (state.lastResultSubId) showExamResult(state.lastResultSubId);
+    });
 
-      els.adminPasswordInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") els.adminLoginBtn.click();
-      });
-
-      els.adminLogoutBtn.addEventListener("click", () => {
-        state.isAdminAuthenticated = false;
-        try { localStorage.removeItem(ADMIN_AUTH_STORAGE_KEY); } catch {}
+    els.adminLoginBtn.addEventListener("click", () => {
+      const entered = els.adminPasswordInput.value.trim();
+      if (entered === state.adminPassword) {
+        state.isAdminAuthenticated = true;
+        try { localStorage.setItem(ADMIN_AUTH_STORAGE_KEY, "true"); } catch {}
+        els.adminPasswordInput.value = "";
         renderHeaderAndShared();
         renderAdminView();
-        showToast("已登出主管後台");
-      });
+        showToast("主管權限驗證成功");
+      } else {
+        showToast("密碼錯誤，請重新輸入");
+      }
+    });
 
-      document.querySelectorAll("button.admin-subtab").forEach((btn) => {
-        btn.addEventListener("click", () => switchAdminSubTab(btn.dataset.admintab));
-      });
+    els.adminPasswordInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") els.adminLoginBtn.click();
+    });
 
-      els.analyticsExamFilter.addEventListener("change", () => {
-        state.analyticsExamFilter = els.analyticsExamFilter.value;
-        renderAdminWorkspace();
-      });
+    els.adminLogoutBtn.addEventListener("click", () => {
+      state.isAdminAuthenticated = false;
+      try { localStorage.removeItem(ADMIN_AUTH_STORAGE_KEY); } catch {}
+      renderHeaderAndShared();
+      renderAdminView();
+      showToast("已登出主管後台");
+    });
 
-      els.gradingStatusFilter.addEventListener("change", () => {
-        state.gradingStatusFilter = els.gradingStatusFilter.value;
-        renderAdminWorkspace();
-      });
+    document.querySelectorAll("button.admin-subtab").forEach((btn) => {
+      btn.addEventListener("click", () => switchAdminSubTab(btn.dataset.admintab));
+    });
 
-      els.editorExamSelect.addEventListener("change", () => {
-        state.editorExamId = els.editorExamSelect.value;
-        renderAdminEditor();
-      });
+    els.analyticsExamFilter.addEventListener("change", () => {
+      state.analyticsExamFilter = els.analyticsExamFilter.value;
+      renderAdminWorkspace();
+    });
 
-      els.saveExamMetaBtn.addEventListener("click", async () => {
-        const eid = state.editorExamId;
-        const ex = state.examBank[eid];
-        ex.title = els.editorExamTitleInput.value.trim() || ex.title;
-        ex.durationMinutes = Math.max(5, Number(els.editorDurationInput.value) || 20);
-        ex.passingScore = Math.max(0, Number(els.editorPassingInput.value) || 80);
-        await persistExam(eid);
-        showToast("已儲存考卷設定");
-        renderAdminEditor();
-      });
+    els.gradingStatusFilter.addEventListener("change", () => {
+      state.gradingStatusFilter = els.gradingStatusFilter.value;
+      renderAdminWorkspace();
+    });
 
-      els.addQuestionBtn.addEventListener("click", async () => {
-        const eid = state.editorExamId;
-        const ex = state.examBank[eid];
-        const newQ = {
-          id: `${eid}_Q_${Date.now()}`,
-          type: "mcq",
-          points: 5,
-          question: "請輸入新考題題目內容...",
-          options: ["選項 A", "選項 B", "選項 C", "選項 D"],
-          correctIndex: 0,
-          explanation: "請輸入本題解析..."
-        };
-        ex.questions.push(newQ);
-        await persistExam(eid);
-        showToast("已新增一題單選題（可隨時切換題型）");
-        renderAdminEditor();
-      });
+    els.editorExamSelect.addEventListener("change", () => {
+      state.editorExamId = els.editorExamSelect.value;
+      renderAdminEditor();
+    });
 
-      els.resetDefaultExamBtn.addEventListener("click", async () => {
-        const eid = state.editorExamId;
-        state.examBank[eid] = JSON.parse(JSON.stringify(DEFAULT_EXAM_BANK[eid]));
-        await persistExam(eid);
-        showToast(`已將 ${eid} 還原為預設題庫`);
-        renderAdminEditor();
-      });
+    els.saveExamMetaBtn.addEventListener("click", async () => {
+      const eid = state.editorExamId;
+      const ex = state.examBank[eid];
+      if (!ex) return;
+      ex.title = els.editorExamTitleInput.value.trim() || ex.title;
+      ex.durationMinutes = Math.max(5, Number(els.editorDurationInput.value) || 20);
+      ex.passingScore = Math.max(0, Math.min(100, Number(els.editorPassingInput.value) || 80));
+      await persistExam(eid);
+      showToast("已儲存考卷設定");
+    });
 
-      els.updateAdminPwdBtn.addEventListener("click", async () => {
-        const p1 = els.newAdminPwdInput.value.trim();
-        const p2 = els.confirmAdminPwdInput.value.trim();
-        if (p1.length < 4) {
-          showToast("新密碼至少需 4 個字元");
-          return;
-        }
-        if (p1 !== p2) {
-          showToast("兩次輸入的新密碼不一致");
-          return;
-        }
-        state.adminPassword = p1;
-        state.isAdminAuthenticated = true;
+    els.addQuestionBtn.addEventListener("click", async () => {
+      const eid = state.editorExamId;
+      const ex = state.examBank[eid];
+      if (!ex) return;
+      ex.questions = ex.questions || [];
+      ex.questions.push({
+        id: `${eid}_Q_${Date.now().toString().slice(-4)}`,
+        type: "mcq",
+        points: 5,
+        question: "請輸入新考題題目...",
+        options: ["選項 A", "選項 B", "選項 C", "選項 D"],
+        correctIndex: 0,
+        explanation: "請輸入本題重點解析..."
+      });
+      await persistExam(eid);
+      renderAdminEditor();
+      showToast("已新增一題單選題，可隨時切換題型");
+    });
+
+    els.resetDefaultExamBtn.addEventListener("click", async () => {
+      const eid = state.editorExamId;
+      if (!DEFAULT_EXAM_BANK[eid]) return;
+      state.examBank[eid] = JSON.parse(JSON.stringify(DEFAULT_EXAM_BANK[eid]));
+      await persistExam(eid);
+      renderAdminEditor();
+      showToast(`已還原 ${eid} 為預設題庫`);
+    });
+
+    els.updateAdminPwdBtn.addEventListener("click", async () => {
+      const p1 = els.newAdminPwdInput.value.trim();
+      const p2 = els.confirmAdminPwdInput.value.trim();
+      if (p1.length < 4) {
+        showToast("新密碼至少需要 4 個字元");
+        return;
+      }
+      if (p1 !== p2) {
+        showToast("兩次輸入的新密碼不一致");
+        return;
+      }
+      state.adminPassword = p1;
+      state.isAdminAuthenticated = true;
+      try {
+        localStorage.setItem(ADMIN_PWD_STORAGE_KEY, p1);
+        localStorage.setItem(ADMIN_AUTH_STORAGE_KEY, "true");
+      } catch {}
+      els.newAdminPwdInput.value = "";
+      els.confirmAdminPwdInput.value = "";
+      if (state.cloudReady && state.db) {
         try {
-          localStorage.setItem(ADMIN_PWD_STORAGE_KEY, p1);
-          localStorage.setItem(ADMIN_AUTH_STORAGE_KEY, "true");
-        } catch {}
-        els.newAdminPwdInput.value = "";
-        els.confirmAdminPwdInput.value = "";
-
-        if (state.cloudReady && state.db) {
-          try {
-            await setDoc(doc(state.db, "artifacts", APP_ID, "public", "data", "settings", "adminConfig"), {
-              adminPassword: p1,
-              updatedAt: nowTimeString()
-            }, { merge: true });
-          } catch {}
+          await setDoc(doc(state.db, "artifacts", state.appId, "public", "data", "settings", "adminConfig"), {
+            adminPassword: p1,
+            updatedAt: nowTimeString()
+          }, { merge: true });
+        } catch (err) {
+          console.error(err);
         }
-        showToast("主管密碼已更新並持久化儲存");
-      });
+      }
+      renderHeaderAndShared();
+      showToast("已更新主管密碼並保存於雲端與本機");
+    });
 
-      els.exportAllResultsCsvBtn.addEventListener("click", exportAllResultsCsv);
-    }
+    window.addEventListener("resize", syncStickyOffsets);
 
-    // =========================================================================
-    // BOOTSTRAP
-    // =========================================================================
     loadPersistentState();
-    bindEvents();
     switchView("PORTAL");
-    renderHeaderAndShared();
     initFirebase();
   </script>
 </body>
