@@ -1022,23 +1022,26 @@
     }
 
     async function initFirebase() {
-      const hasConfig = firebaseConfig.apiKey && !firebaseConfig.apiKey.startsWith("YOUR_");
-      if (!hasConfig) {
-        setSyncBadge("warn", "本機儲存模式");
-        return;
-      }
-      try {
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        state.db = getFirestore(app);
-        await signInAnonymously(auth);
-        state.cloudReady = true;
-        setSyncBadge("ok", "雲端已即時同步");
-        subscribeCloudData();
-      } catch (err) {
-        console.error("Firebase init error:", err);
-        setSyncBadge("err", "雲端連線失敗（已改用本機暫存）");
-      }
+  try {
+    const firebaseConfig = {
+      apiKey: "AIzaSyB6sL2VRxoizIbbLqX0hrx3G0YZQyKRTBs",
+      authDomain: "gym-inspection.firebaseapp.com",
+      databaseURL: "https://gym-inspection-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "gym-inspection",
+      storageBucket: "gym-inspection.firebasestorage.app",
+      messagingSenderId: "492275565622",
+      appId: "1:492275565622:web:f8683fbd8e9e26b2de0497",
+      measurementId: "G-X4BTF7CZ4X"
+    };
+
+    const appId = "gym-inspection-app";
+    state.appId = appId;
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    await signInAnonymously(auth);
     }
 
     function subscribeCloudData() {
