@@ -423,6 +423,9 @@
           <button data-admintab="EDITOR" type="button" class="admin-subtab px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-200 text-slate-700 hover:bg-slate-50">
             🛠️ 題庫後台編輯（選擇/排序/簡答）
           </button>
+          <button data-admintab="TRAINEES" type="button" class="admin-subtab px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-200 text-slate-700 hover:bg-slate-50">
+            👥 學員與考試紀錄管理
+          </button>
           <button data-admintab="SECURITY" type="button" class="admin-subtab px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-200 text-slate-700 hover:bg-slate-50">
             🔑 主管密碼設定
           </button>
@@ -550,7 +553,67 @@
         </div>
       </div>
 
-      <!-- ADMIN TAB 4: PASSWORD & PERSISTENCE SETTINGS -->
+      <!-- ADMIN TAB 4: TRAINEE & EXAM RECORD MANAGEMENT -->
+      <div id="adminTabTrainees" class="hidden space-y-4">
+        <!-- Create New Trainee Form -->
+        <div class="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+          <div>
+            <h3 class="text-sm font-bold text-slate-900">➕ 新增學員檔案（即時同步至雲端與進度表）</h3>
+            <p class="text-xs text-slate-500 mt-0.5">建立後將同步出現在上方「學員檔案」選單中，並自動將小老師帶入負責人欄位。</p>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-12 gap-2">
+            <div class="sm:col-span-3">
+              <label class="block text-[11px] font-semibold text-slate-600 mb-1">姓名／英文名 *</label>
+              <input id="adminNewTraineeName" type="text" placeholder="如：Chloe / 王小明" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-900" />
+            </div>
+            <div class="sm:col-span-3">
+              <label class="block text-[11px] font-semibold text-slate-600 mb-1">員工編號</label>
+              <input id="adminNewTraineeEmpId" type="text" placeholder="如：WG00123" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800" />
+            </div>
+            <div class="sm:col-span-2">
+              <label class="block text-[11px] font-semibold text-slate-600 mb-1">到職日</label>
+              <input id="adminNewTraineeHireDate" type="date" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-2 py-1.5 text-xs text-slate-800" />
+            </div>
+            <div class="sm:col-span-2">
+              <label class="block text-[11px] font-semibold text-slate-600 mb-1">小老師（＝負責人）</label>
+              <input id="adminNewTraineeMentor" type="text" placeholder="小老師名字" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800" />
+            </div>
+            <div class="sm:col-span-2 flex items-end">
+              <button id="adminCreateTraineeBtn" type="button" class="w-full py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition">
+                ＋ 建立學員
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Existing Trainees List & Delete Controls -->
+        <div class="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 class="text-sm font-bold text-slate-900">📋 現有學員名單管理</h3>
+              <p class="text-xs text-slate-500">可切換學員、查看進度與考卷數，或刪除測試／離職學員檔案（不支援 browser confirm，採二次點擊確認刪除）。</p>
+            </div>
+            <span id="adminTraineeCountBadge" class="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 text-xs font-bold">共 0 位學員</span>
+          </div>
+          <div id="adminTraineesListContainer" class="space-y-2"></div>
+        </div>
+
+        <!-- Exam Submissions Deletion Manager -->
+        <div class="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 class="text-sm font-bold text-slate-900">🗑️ 學員考試紀錄刪除管理</h3>
+              <p class="text-xs text-slate-500">可依學員篩選並刪除誤交、測試或需作廢的考試紀錄（刪除後會同步更新雲端與錯題率統計）。</p>
+            </div>
+            <select id="adminRecordTraineeFilter" class="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-700">
+              <option value="ALL">全部學員考卷紀錄</option>
+            </select>
+          </div>
+          <div id="adminExamRecordsListContainer" class="space-y-2"></div>
+        </div>
+      </div>
+
+      <!-- ADMIN TAB 5: PASSWORD & PERSISTENCE SETTINGS -->
       <div id="adminTabSecurity" class="hidden">
         <div class="max-w-lg bg-white border border-slate-200 rounded-xl p-5 space-y-4">
           <div>
@@ -597,7 +660,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
     import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-    import { getFirestore, doc, setDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    import { getFirestore, doc, setDoc, deleteDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
     const APP_ID = "wg-banqiao-cs-platform";
     const ADMIN_AUTH_STORAGE_KEY = "wg_banqiao_admin_session_v1";
@@ -753,6 +816,8 @@
       editorExamId: "W1",
       analyticsExamFilter: "ALL",
       gradingStatusFilter: "ALL",
+      adminRecordTraineeFilter: "ALL",
+      pendingDeleteConfirmId: null,
 
       db: null,
       cloudReady: false
@@ -846,6 +911,7 @@
       adminTabAnalytics: document.getElementById("adminTabAnalytics"),
       adminTabGrading: document.getElementById("adminTabGrading"),
       adminTabEditor: document.getElementById("adminTabEditor"),
+      adminTabTrainees: document.getElementById("adminTabTrainees"),
       adminTabSecurity: document.getElementById("adminTabSecurity"),
       kpiTotalAttempts: document.getElementById("kpiTotalAttempts"),
       kpiAvgScore: document.getElementById("kpiAvgScore"),
@@ -864,6 +930,15 @@
       editorStatsText: document.getElementById("editorStatsText"),
       resetDefaultExamBtn: document.getElementById("resetDefaultExamBtn"),
       editorQuestionsContainer: document.getElementById("editorQuestionsContainer"),
+      adminNewTraineeName: document.getElementById("adminNewTraineeName"),
+      adminNewTraineeEmpId: document.getElementById("adminNewTraineeEmpId"),
+      adminNewTraineeHireDate: document.getElementById("adminNewTraineeHireDate"),
+      adminNewTraineeMentor: document.getElementById("adminNewTraineeMentor"),
+      adminCreateTraineeBtn: document.getElementById("adminCreateTraineeBtn"),
+      adminTraineeCountBadge: document.getElementById("adminTraineeCountBadge"),
+      adminTraineesListContainer: document.getElementById("adminTraineesListContainer"),
+      adminRecordTraineeFilter: document.getElementById("adminRecordTraineeFilter"),
+      adminExamRecordsListContainer: document.getElementById("adminExamRecordsListContainer"),
       newAdminPwdInput: document.getElementById("newAdminPwdInput"),
       confirmAdminPwdInput: document.getElementById("confirmAdminPwdInput"),
       updateAdminPwdBtn: document.getElementById("updateAdminPwdBtn"),
@@ -1046,8 +1121,10 @@
       onSnapshot(
         collection(state.db, "artifacts", state.appId, "public", "data", "trainees"),
         (snap) => {
+          const cloudIds = new Set();
           if (!snap.empty) {
             snap.forEach((d) => {
+              cloudIds.add(d.id);
               const data = d.data();
               state.trainees[d.id] = {
                 id: d.id,
@@ -1059,6 +1136,12 @@
                 updatedAt: data.updatedAt || ""
               };
             });
+            Object.keys(state.trainees).forEach((localId) => {
+              if (localId !== "trainee_default" && !cloudIds.has(localId)) {
+                delete state.trainees[localId];
+              }
+            });
+            ensureDefaultTrainee();
             saveLocalTrainees();
           }
           renderHeaderAndShared();
@@ -1069,6 +1152,9 @@
           if (state.activeView === "EXAM" && !state.activeExamId) {
             renderExamLobby();
           }
+          if (state.activeView === "ADMIN" && state.isAdminAuthenticated) {
+            renderAdminWorkspace();
+          }
         },
         (err) => {
           console.error("subscribeCloudData error:", err);
@@ -1077,10 +1163,12 @@
       );
 
       onSnapshot(collection(state.db, "artifacts", state.appId, "public", "data", "examSubmissions"), (snap) => {
-        if (!snap.empty) {
-          snap.forEach((d) => {
-            state.submissions[d.id] = d.data();
-          });
+        const nextSubs = {};
+        snap.forEach((d) => {
+          nextSubs[d.id] = d.data();
+        });
+        if (!snap.empty || Object.keys(state.submissions).length > 0) {
+          state.submissions = nextSubs;
           saveLocalSubmissions();
           if (state.activeView === "EXAM" && !state.activeExamId) renderExamLobby();
           if (state.activeView === "ADMIN" && state.isAdminAuthenticated) renderAdminWorkspace();
@@ -1144,98 +1232,167 @@
       }
     }
 
-    // =========================================================================
-    // NAVIGATION & SHARED BAR
-    // =========================================================================
-    function switchView(viewName) {
-      state.activeView = viewName;
-      els.viewPortal.classList.toggle("hidden", viewName !== "PORTAL");
-      els.viewTraining.classList.toggle("hidden", viewName !== "TRAINING");
-      els.viewExam.classList.toggle("hidden", viewName !== "EXAM");
-      els.viewAdmin.classList.toggle("hidden", viewName !== "ADMIN");
+    async function deleteTraineeById(traineeId, alsoDeleteExams = false) {
+      const target = state.trainees[traineeId];
+      if (!target) return;
+      const targetName = target.name || "未命名學員";
 
-      const tabs = [
+      delete state.trainees[traineeId];
+      ensureDefaultTrainee();
+      saveLocalTrainees();
+
+      if (state.cloudReady && state.db) {
+        try {
+          await deleteDoc(doc(state.db, "artifacts", state.appId, "public", "data", "trainees", traineeId));
+        } catch (err) {
+          console.error("deleteTrainee error:", err);
+          showToast("雲端刪除學員失敗：" + (err.code || err.message || err));
+        }
+      }
+
+      if (alsoDeleteExams) {
+        const relatedSubs = Object.values(state.submissions).filter((s) => s.traineeId === traineeId);
+        for (const sub of relatedSubs) {
+          await deleteSubmissionById(sub.id, true);
+        }
+      }
+
+      renderHeaderAndShared();
+      if (state.activeView === "TRAINING") renderTrainingView();
+      if (state.activeView === "ADMIN") renderAdminWorkspace();
+      showToast(`已刪除學員「${targetName}」${alsoDeleteExams ? "及其考試紀錄" : ""}`);
+    }
+
+    async function deleteSubmissionById(subId, silent = false) {
+      if (!state.submissions[subId]) return;
+      delete state.submissions[subId];
+      saveLocalSubmissions();
+
+      if (state.cloudReady && state.db) {
+        try {
+          await deleteDoc(doc(state.db, "artifacts", state.appId, "public", "data", "examSubmissions", subId));
+        } catch (err) {
+          console.error("deleteSubmission error:", err);
+          if (!silent) showToast("雲端刪除考卷失敗：" + (err.code || err.message || err));
+        }
+      }
+
+      if (!silent) {
+        if (state.activeView === "EXAM" && !state.activeExamId) renderExamLobby();
+        if (state.activeView === "ADMIN") renderAdminWorkspace();
+        showToast("已刪除該筆考試紀錄");
+      }
+    }
+
+    function switchView(view) {
+      state.activeView = view;
+
+      const views = {
+        PORTAL: els.viewPortal,
+        TRAINING: els.viewTraining,
+        EXAM: els.viewExam,
+        ADMIN: els.viewAdmin
+      };
+      Object.entries(views).forEach(([key, el]) => {
+        if (el) el.classList.toggle("hidden", key !== view);
+      });
+
+      const navMap = [
         { btn: els.navTrainingBtn, key: "TRAINING" },
         { btn: els.navExamBtn, key: "EXAM" },
         { btn: els.navAdminBtn, key: "ADMIN" }
       ];
-      tabs.forEach(({ btn, key }) => {
-        btn.className = key === viewName
+      navMap.forEach(({ btn, key }) => {
+        if (!btn) return;
+        const active = view === key;
+        btn.className = active
           ? "nav-tab px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-400 text-slate-950 transition"
           : "nav-tab px-3 py-1.5 rounded-lg text-xs font-bold text-slate-300 hover:text-white transition";
       });
 
-      syncStickyOffsets();
       renderHeaderAndShared();
 
-      if (viewName === "TRAINING") renderTrainingView();
-      if (viewName === "EXAM") {
+      if (view === "TRAINING") {
+        renderTrainingView();
+      } else if (view === "EXAM") {
         if (state.activeExamId) {
           els.examLobbyCard.classList.add("hidden");
           els.examResultCard.classList.add("hidden");
           els.examRunnerCard.classList.remove("hidden");
-          window.scrollTo({ top: 0, behavior: "instant" });
         } else {
           els.examRunnerCard.classList.add("hidden");
           els.examResultCard.classList.add("hidden");
           els.examLobbyCard.classList.remove("hidden");
           renderExamLobby();
         }
+      } else if (view === "ADMIN") {
+        renderAdminView();
       }
-      if (viewName === "ADMIN") renderAdminView();
-    }
 
-    function renderHeaderAndShared() {
-      els.adminBadgeHeader.classList.toggle("hidden", !state.isAdminAuthenticated);
-
-      const list = Object.values(state.trainees);
-      els.traineeSelect.innerHTML = list.map((tr) => {
-        const doneCount = TRAINING_ITEMS.filter((it) => tr.entries?.[it.id]?.checked).length;
-        const empPart = tr.empId ? ` [${tr.empId}]` : "";
-        return `<option value="${escapeHtml(tr.id)}" ${tr.id === state.activeTraineeId ? "selected" : ""}>${escapeHtml(tr.name || "未命名學員")}${escapeHtml(empPart)} (${doneCount}/${TRAINING_ITEMS.length})</option>`;
-      }).join("");
-
-      const t = getCurrentTrainee();
-      if (document.activeElement !== els.traineeNameInput) els.traineeNameInput.value = t.name || "";
-      if (document.activeElement !== els.empIdInput) els.empIdInput.value = t.empId || "";
-      if (document.activeElement !== els.hireDateInput) els.hireDateInput.value = t.hireDate || "";
-      if (document.activeElement !== els.mentorInput) els.mentorInput.value = t.mentor || "";
-
-      if (document.activeElement !== els.quickEngNameInput) els.quickEngNameInput.value = t.name || "";
-      if (document.activeElement !== els.quickMentorOwnerInput) els.quickMentorOwnerInput.value = t.mentor || "";
-
-      if (document.activeElement !== els.examEnglishNameInput) els.examEnglishNameInput.value = t.name || "";
-      if (document.activeElement !== els.examEmpIdInput) els.examEmpIdInput.value = t.empId || "";
-
-      const summaryLabel = `${t.name || "未命名學員"}${t.empId ? `（員編：${t.empId}）` : ""}${t.mentor ? `｜小老師/負責人：${t.mentor}` : ""}`;
-      els.examCurrentTraineeLabel.textContent = summaryLabel;
-      els.portalCurrentInfo.textContent = summaryLabel;
       syncStickyOffsets();
     }
 
-    // =========================================================================
-    // VIEW 1: TRAINING PROGRESS TRACKER LOGIC
-    // =========================================================================
-    function getItemStatus(entry) {
-      if (!entry || !entry.checked) return "TODO";
-      if (!entry.trainerChecked) return "WAIT_TRAINER";
-      if (!entry.directorChecked) return "WAIT_DIRECTOR";
-      return "DONE";
+    function renderHeaderAndShared() {
+      const t = getCurrentTrainee();
+      const traineesList = Object.values(state.trainees);
+
+      if (els.adminBadgeHeader) {
+        els.adminBadgeHeader.classList.toggle("hidden", !state.isAdminAuthenticated);
+      }
+
+      if (els.traineeSelect) {
+        els.traineeSelect.innerHTML = traineesList.map((tr) => `
+          <option value="${escapeHtml(tr.id)}" ${tr.id === state.activeTraineeId ? "selected" : ""}>
+            ${escapeHtml(tr.name || "未命名學員")}${tr.empId ? ` (${escapeHtml(tr.empId)})` : ""}
+          </option>
+        `).join("");
+      }
+
+      if (els.traineeNameInput && document.activeElement !== els.traineeNameInput) {
+        els.traineeNameInput.value = t.name || "";
+      }
+      if (els.empIdInput && document.activeElement !== els.empIdInput) {
+        els.empIdInput.value = t.empId || "";
+      }
+      if (els.hireDateInput && document.activeElement !== els.hireDateInput) {
+        els.hireDateInput.value = t.hireDate || "";
+      }
+      if (els.mentorInput && document.activeElement !== els.mentorInput) {
+        els.mentorInput.value = t.mentor || "";
+      }
+      if (els.quickEngNameInput && document.activeElement !== els.quickEngNameInput) {
+        els.quickEngNameInput.value = t.name || "";
+      }
+      if (els.quickMentorOwnerInput && document.activeElement !== els.quickMentorOwnerInput) {
+        els.quickMentorOwnerInput.value = t.mentor || "";
+      }
+      if (els.portalCurrentInfo) {
+        els.portalCurrentInfo.textContent = `${t.name || "未命名學員"}${t.empId ? `｜員編：${t.empId}` : ""}${t.mentor ? `｜小老師：${t.mentor}` : ""}`;
+      }
     }
 
     function getStageItems(stageId) {
-      return stageId === "ALL" ? TRAINING_ITEMS : TRAINING_ITEMS.filter((it) => it.stage === stageId);
+      if (stageId === "ALL") return TRAINING_ITEMS;
+      return TRAINING_ITEMS.filter((it) => it.stage === stageId);
     }
 
     function getFilteredItems() {
       const t = getCurrentTrainee();
-      const kw = state.search.trim().toLowerCase();
-      return getStageItems(state.activeStage).filter((it) => {
+      const q = (state.search || "").trim().toLowerCase();
+
+      return TRAINING_ITEMS.filter((it) => {
+        if (state.activeStage !== "ALL" && it.stage !== state.activeStage) return false;
         if (state.activeModule !== "ALL" && it.modId !== state.activeModule) return false;
-        if (state.statusFilter !== "ALL" && getItemStatus(t.entries[it.id]) !== state.statusFilter) return false;
-        if (kw) {
-          const hay = `${it.module} ${it.item} ${it.onlineCourse} ${it.stageLabel}`.toLowerCase();
-          if (!hay.includes(kw)) return false;
+
+        const e = t.entries[it.id] || {};
+        if (state.statusFilter === "TODO" && e.checked) return false;
+        if (state.statusFilter === "WAIT_TRAINER" && (!e.checked || e.trainerChecked)) return false;
+        if (state.statusFilter === "WAIT_DIRECTOR" && (!e.trainerChecked || e.directorChecked)) return false;
+        if (state.statusFilter === "DONE" && !(e.checked && e.trainerChecked && e.directorChecked)) return false;
+
+        if (q) {
+          const hay = `${it.module} ${it.item} ${it.onlineCourse || ""} ${e.owner || ""}`.toLowerCase();
+          if (!hay.includes(q)) return false;
         }
         return true;
       });
@@ -1245,30 +1402,28 @@
       const t = getCurrentTrainee();
       const total = TRAINING_ITEMS.length;
       const doneTotal = TRAINING_ITEMS.filter((it) => t.entries[it.id]?.checked).length;
-      const trainerTotal = TRAINING_ITEMS.filter((it) => t.entries[it.id]?.trainerChecked).length;
-      const directorTotal = TRAINING_ITEMS.filter((it) => t.entries[it.id]?.directorChecked).length;
       const pct = total ? Math.round((doneTotal / total) * 100) : 0;
 
       const stageList = getStageItems(state.activeStage);
       const stageDone = stageList.filter((it) => t.entries[it.id]?.checked).length;
 
+      const trainerCount = TRAINING_ITEMS.filter((it) => t.entries[it.id]?.trainerChecked).length;
+      const directorCount = TRAINING_ITEMS.filter((it) => t.entries[it.id]?.directorChecked).length;
+
       els.totalProgressText.textContent = `${doneTotal} / ${total} (${pct}%)`;
       els.stageProgressText.textContent = `${stageDone} / ${stageList.length}`;
-      els.trainerSignCount.textContent = `${trainerTotal}`;
-      els.directorSignCount.textContent = `${directorTotal}`;
+      els.trainerSignCount.textContent = String(trainerCount);
+      els.directorSignCount.textContent = String(directorCount);
       els.overallProgressBar.style.width = `${pct}%`;
-      els.lastUpdatedText.textContent = t.updatedAt ? `更新 ${t.updatedAt}` : "";
+      els.lastUpdatedText.textContent = t.updatedAt ? `更新：${t.updatedAt}` : "";
 
-      if (!t.hireDate) {
-        els.tenureBadge.textContent = "尚未設定到職日";
-      } else {
-        const start = new Date(t.hireDate + "T00:00:00");
+      if (t.hireDate) {
+        const start = new Date(`${t.hireDate}T00:00:00`);
         const now = new Date();
-        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const days = Math.floor((today - start) / (1000 * 60 * 60 * 24)) + 1;
-        els.tenureBadge.textContent = days <= 0
-          ? `距報到還有 ${Math.abs(days) + 1} 天`
-          : `到職第 ${days} 天（第 ${Math.ceil(days / 7)} 週）`;
+        const diffDays = Math.floor((now - start) / 86400000) + 1;
+        els.tenureBadge.textContent = diffDays >= 1 ? `到職第 ${diffDays} 天` : `預計 ${t.hireDate} 到職`;
+      } else {
+        els.tenureBadge.textContent = "尚未設定到職日";
       }
     }
 
@@ -1921,6 +2076,7 @@
       els.adminTabAnalytics.classList.toggle("hidden", tab !== "ANALYTICS");
       els.adminTabGrading.classList.toggle("hidden", tab !== "GRADING");
       els.adminTabEditor.classList.toggle("hidden", tab !== "EDITOR");
+      els.adminTabTrainees.classList.toggle("hidden", tab !== "TRAINEES");
       els.adminTabSecurity.classList.toggle("hidden", tab !== "SECURITY");
       renderAdminWorkspace();
     }
@@ -1938,76 +2094,72 @@
       if (state.activeAdminTab === "ANALYTICS") renderAdminAnalytics(subsList);
       if (state.activeAdminTab === "GRADING") renderAdminGrading(subsList);
       if (state.activeAdminTab === "EDITOR") renderAdminEditor();
+      if (state.activeAdminTab === "TRAINEES") renderAdminTrainees(subsList);
     }
 
     function renderAdminAnalytics(subsList) {
-      const filterExam = state.analyticsExamFilter;
-      const examIds = filterExam === "ALL" ? EXAM_IDS : [filterExam];
+      const filterExam = state.analyticsExamFilter || "ALL";
+      const targetExamIds = filterExam === "ALL" ? EXAM_IDS : [filterExam];
       const statsRows = [];
+      let highErrorCount = 0;
 
-      examIds.forEach((eid) => {
+      targetExamIds.forEach((eid) => {
         const ex = state.examBank[eid];
         if (!ex) return;
         const examSubs = subsList.filter((s) => s.examId === eid);
-        (ex.questions || []).forEach((q, idx) => {
+
+        (ex.questions || []).forEach((q, qIdx) => {
+          if (q.type === "short") return;
           let attempts = 0;
-          let wrongCount = 0;
+          let wrong = 0;
           examSubs.forEach((s) => {
             const r = s.results?.[q.id];
-            if (!r) return;
-            attempts++;
-            if (q.type === "short") {
-              if (s.essayGraded && (Number(r.earnedPoints) || 0) < (Number(q.points) || 0) * 0.6) wrongCount++;
-            } else if (!r.isCorrect) {
-              wrongCount++;
+            if (r) {
+              attempts++;
+              if (r.isCorrect !== true) wrong++;
             }
           });
-          const errorRate = attempts > 0 ? Math.round((wrongCount / attempts) * 100) : 0;
+          const errRate = attempts > 0 ? Math.round((wrong / attempts) * 100) : 0;
+          if (attempts > 0 && errRate >= 40) highErrorCount++;
           statsRows.push({
             examId: eid,
-            qNum: idx + 1,
-            type: getExamQuestionTypeLabel(q.type),
+            qNum: qIdx + 1,
+            typeLabel: getExamQuestionTypeLabel(q.type),
             question: q.question,
             attempts,
-            wrongCount,
-            errorRate
+            wrong,
+            errRate
           });
         });
       });
 
-      const highErr = statsRows.filter((r) => r.attempts > 0 && r.errorRate >= 40).length;
-      els.kpiHighErrorCount.textContent = `${highErr} 題`;
-      statsRows.sort((a, b) => b.errorRate - a.errorRate || b.attempts - a.attempts);
+      els.kpiHighErrorCount.textContent = `${highErrorCount} 題`;
+      statsRows.sort((a, b) => b.errRate - a.errRate || b.wrong - a.wrong);
+
+      if (statsRows.length === 0) {
+        els.errorRateTableContainer.innerHTML = `<div class="text-xs text-slate-400 text-center py-6">目前尚無客觀題統計資料。</div>`;
+        return;
+      }
 
       els.errorRateTableContainer.innerHTML = `
         <table class="w-full text-left border-collapse text-xs">
           <thead>
-            <tr class="bg-slate-100 text-slate-700 border-b border-slate-200">
-              <th class="py-2 px-2.5 font-bold">考卷</th>
+            <tr class="border-b border-slate-200 bg-slate-50 text-slate-600">
+              <th class="py-2 px-2.5 font-bold">考卷 / 題號</th>
               <th class="py-2 px-2.5 font-bold">題型</th>
               <th class="py-2 px-2.5 font-bold">題目內容</th>
-              <th class="py-2 px-2.5 font-bold text-center">作答人數</th>
-              <th class="py-2 px-2.5 font-bold text-center">答錯人數</th>
+              <th class="py-2 px-2.5 font-bold text-right">答錯 / 作答</th>
               <th class="py-2 px-2.5 font-bold text-right">錯題率</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody class="divide-y divide-slate-100">
             ${statsRows.map((r) => `
-              <tr class="border-b border-slate-100 hover:bg-slate-50">
+              <tr class="${r.attempts > 0 && r.errRate >= 40 ? "bg-rose-50/50" : ""}">
                 <td class="py-2 px-2.5 font-bold text-slate-900 whitespace-nowrap">${escapeHtml(r.examId)} #${r.qNum}</td>
-                <td class="py-2 px-2.5 whitespace-nowrap"><span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">${escapeHtml(r.type)}</span></td>
-                <td class="py-2 px-2.5 text-slate-800 max-w-md">${escapeHtml(r.question)}</td>
-                <td class="py-2 px-2.5 text-center font-mono">${r.attempts}</td>
-                <td class="py-2 px-2.5 text-center font-mono text-rose-600 font-bold">${r.wrongCount}</td>
-                <td class="py-2 px-2.5 text-right whitespace-nowrap">
-                  <span class="px-2 py-0.5 rounded font-bold ${
-                    r.attempts === 0 ? "bg-slate-100 text-slate-400" :
-                    r.errorRate >= 40 ? "bg-rose-100 text-rose-700" :
-                    r.errorRate > 0 ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"
-                  }">
-                    ${r.attempts === 0 ? "尚無作答" : `${r.errorRate}%`}
-                  </span>
-                </td>
+                <td class="py-2 px-2.5 whitespace-nowrap"><span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">${escapeHtml(r.typeLabel)}</span></td>
+                <td class="py-2 px-2.5 text-slate-700 max-w-md">${escapeHtml(r.question)}</td>
+                <td class="py-2 px-2.5 text-right whitespace-nowrap text-slate-600">${r.wrong} / ${r.attempts}</td>
+                <td class="py-2 px-2.5 text-right whitespace-nowrap font-extrabold ${r.attempts > 0 && r.errRate >= 40 ? "text-rose-600" : "text-slate-700"}">${r.errRate}%</td>
               </tr>
             `).join("")}
           </tbody>
@@ -2016,91 +2168,282 @@
     }
 
     function renderAdminGrading(subsList) {
-      let filtered = [...subsList].sort((a, b) => (b.submittedAt || "").localeCompare(a.submittedAt || ""));
-      if (state.gradingStatusFilter === "PENDING") filtered = filtered.filter((s) => !s.essayGraded);
-      if (state.gradingStatusFilter === "GRADED") filtered = filtered.filter((s) => s.essayGraded);
+      const filter = state.gradingStatusFilter || "ALL";
+      let list = [...subsList].sort((a, b) => (b.submittedAt || "").localeCompare(a.submittedAt || ""));
+      if (filter === "PENDING") list = list.filter((s) => !s.essayGraded);
+      if (filter === "GRADED") list = list.filter((s) => !!s.essayGraded);
 
-      if (filtered.length === 0) {
+      if (list.length === 0) {
         els.submissionsListContainer.innerHTML = `<div class="text-xs text-slate-400 text-center py-6 bg-slate-50 rounded-xl">目前沒有符合篩選條件的考卷紀錄。</div>`;
         return;
       }
 
-      els.submissionsListContainer.innerHTML = filtered.map((s) => {
-        const ex = state.examBank[s.examId] || { questions: [] };
+      els.submissionsListContainer.innerHTML = list.map((sub) => {
+        const ex = state.examBank[sub.examId] || { questions: [] };
         const shortQs = (ex.questions || []).filter((q) => q.type === "short");
 
-        const shortGradingHtml = shortQs.map((q) => {
-          const r = s.results?.[q.id] || {};
+        const shortHtml = shortQs.map((q, idx) => {
+          const r = sub.results?.[q.id] || { userAnswer: "", earnedPoints: 0, supervisorNote: "" };
           return `
-            <div class="bg-amber-50/60 border border-amber-200 rounded-xl p-3 space-y-2 text-xs">
-              <div class="font-bold text-slate-900">【簡答題｜滿分 ${q.points} 分】${escapeHtml(q.question)}</div>
-              <div class="bg-white p-2 rounded border border-slate-200 text-slate-800 whitespace-pre-line">
-                <strong>學員作答：</strong>${escapeHtml(r.userAnswer || "（空白未填）")}
+            <div class="bg-amber-50/40 border border-amber-200 rounded-xl p-3 space-y-2 text-xs">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <strong class="text-slate-900">簡答題 ${idx + 1}（滿分 ${q.points} 分）：${escapeHtml(q.question)}</strong>
+                <div class="flex items-center gap-1.5">
+                  <label class="text-slate-600 font-semibold">給分：</label>
+                  <input type="number" min="0" max="${q.points}" value="${r.earnedPoints ?? 0}"
+                    data-grade-sub="${escapeHtml(sub.id)}" data-grade-qid="${escapeHtml(q.id)}"
+                    class="w-16 bg-white border border-slate-300 rounded px-2 py-1 font-bold text-center text-slate-900" />
+                  <span class="text-slate-500">/ ${q.points}</span>
+                </div>
               </div>
-              <div class="text-emerald-700"><strong>參考答案：</strong>${escapeHtml(q.answer || "")}</div>
-              <div class="flex flex-wrap items-center gap-2 pt-1">
-                <label class="font-semibold text-slate-700">主管給分：</label>
-                <input type="number" min="0" max="${q.points}" value="${r.earnedPoints ?? 0}"
-                  data-grade-sub="${escapeHtml(s.id)}" data-grade-qid="${escapeHtml(q.id)}"
-                  class="w-20 bg-white border border-slate-300 rounded px-2 py-1 font-bold text-slate-900" />
-                <input type="text" value="${escapeHtml(r.supervisorNote || "")}" placeholder="主管評語（選填）..."
-                  data-note-sub="${escapeHtml(s.id)}" data-note-qid="${escapeHtml(q.id)}"
-                  class="flex-1 min-w-[180px] bg-white border border-slate-300 rounded px-2.5 py-1 text-slate-800" />
+              <div class="bg-white border border-slate-200 rounded-lg p-2 text-slate-800 whitespace-pre-line">
+                <span class="text-[11px] font-bold text-slate-500 block mb-0.5">學員作答：</span>
+                ${escapeHtml(r.userAnswer || "（未填寫）")}
               </div>
+              <div class="text-[11px] text-emerald-800 bg-emerald-50/70 border border-emerald-200 rounded-lg p-2 whitespace-pre-line">
+                <strong>參考標準答案：</strong>${escapeHtml(q.answer || "")}
+              </div>
+              <input type="text" value="${escapeHtml(r.supervisorNote || "")}" placeholder="填寫主管評語（選填）..."
+                data-note-sub="${escapeHtml(sub.id)}" data-note-qid="${escapeHtml(q.id)}"
+                class="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800" />
             </div>
           `;
         }).join("");
 
         return `
-          <div class="border border-slate-200 rounded-xl p-3.5 space-y-3 bg-white">
+          <div class="border border-slate-200 rounded-xl p-3.5 space-y-2.5 bg-white">
             <div class="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <span class="px-2 py-0.5 rounded bg-slate-900 text-amber-300 text-[11px] font-bold">${escapeHtml(s.examId)}</span>
-                <strong class="text-sm text-slate-900 ml-1.5">${escapeHtml(s.traineeName)}</strong>
-                <span class="text-xs text-slate-500 ml-1">（${s.empId ? `員編：${escapeHtml(s.empId)}｜` : ""}小老師：${escapeHtml(s.mentor || "未填")}｜交卷：${escapeHtml(s.submittedAt)}）</span>
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <span class="px-2 py-0.5 rounded bg-slate-900 text-amber-300 text-[11px] font-bold">${escapeHtml(sub.examId)}</span>
+                  <strong class="text-sm text-slate-900">${escapeHtml(sub.traineeName || "未命名學員")}</strong>
+                  ${sub.empId ? `<span class="text-xs text-slate-500">（員編：${escapeHtml(sub.empId)}）</span>` : ""}
+                  <span class="px-2 py-0.5 rounded text-[11px] font-bold ${sub.essayGraded ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-800"}">
+                    ${sub.essayGraded ? "✓ 已完成批改" : "⏳ 待批改簡答"}
+                  </span>
+                </div>
+                <div class="text-[11px] text-slate-500 mt-0.5">
+                  ${escapeHtml(sub.examTitle)}｜交卷：${escapeHtml(sub.submittedAt || "-")}｜客觀題：${sub.autoScore} 分｜簡答題：${sub.essayScore ?? 0} 分
+                </div>
               </div>
               <div class="flex items-center gap-2">
-                <span class="text-xs text-slate-600">客觀題：<strong>${s.autoScore}</strong>｜簡答：<strong>${s.essayScore || 0}</strong>｜總分：<strong class="text-sm text-emerald-600">${s.totalScore}/${s.maxScore}</strong></span>
-                <span class="px-2 py-0.5 rounded text-[11px] font-bold ${s.essayGraded ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-800"}">
-                  ${s.essayGraded ? "已批改" : "待批改簡答"}
-                </span>
+                <span class="text-base font-black ${sub.totalScore >= 80 ? "text-emerald-600" : "text-amber-600"}">總分 ${sub.totalScore} / ${sub.maxScore}</span>
+                ${shortQs.length > 0 ? `
+                  <button type="button" data-save-grade-sub="${escapeHtml(sub.id)}"
+                    class="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-amber-300 text-xs font-bold">
+                    儲存批改與總分
+                  </button>
+                ` : ""}
               </div>
             </div>
-            ${shortQs.length > 0 ? `
-              <div class="space-y-2">${shortGradingHtml}</div>
-              <div class="flex justify-end">
-                <button type="button" data-save-grade="${escapeHtml(s.id)}" class="px-3.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-amber-300 text-xs font-bold">
-                  儲存此考卷簡答評分
-                </button>
-              </div>
-            ` : `<div class="text-[11px] text-slate-400">本考卷無簡答題，已全數自動計分。</div>`}
+            ${shortHtml ? `<div class="space-y-2 pt-1">${shortHtml}</div>` : ""}
           </div>
         `;
       }).join("");
 
-      els.submissionsListContainer.querySelectorAll("button[data-save-grade]").forEach((btn) => {
+      els.submissionsListContainer.querySelectorAll("button[data-save-grade-sub]").forEach((btn) => {
         btn.addEventListener("click", async () => {
-          const subId = btn.dataset.saveGrade;
+          const subId = btn.dataset.saveGradeSub;
           const sub = state.submissions[subId];
           if (!sub) return;
+
           let essaySum = 0;
           els.submissionsListContainer.querySelectorAll(`input[data-grade-sub="${subId}"]`).forEach((inp) => {
             const qid = inp.dataset.gradeQid;
-            const val = Math.max(0, Number(inp.value) || 0);
-            if (!sub.results[qid]) sub.results[qid] = {};
-            sub.results[qid].earnedPoints = val;
-            essaySum += val;
+            const maxPts = Number(inp.max) || 100;
+            const pts = Math.max(0, Math.min(maxPts, Number(inp.value) || 0));
+            if (sub.results?.[qid]) {
+              sub.results[qid].earnedPoints = pts;
+            }
+            essaySum += pts;
           });
+
           els.submissionsListContainer.querySelectorAll(`input[data-note-sub="${subId}"]`).forEach((inp) => {
             const qid = inp.dataset.noteQid;
-            if (!sub.results[qid]) sub.results[qid] = {};
-            sub.results[qid].supervisorNote = inp.value.trim();
+            if (sub.results?.[qid]) {
+              sub.results[qid].supervisorNote = inp.value.trim();
+            }
           });
+
           sub.essayScore = essaySum;
           sub.totalScore = (Number(sub.autoScore) || 0) + essaySum;
           sub.essayGraded = true;
+
           await persistSubmission(sub);
-          showToast(`已儲存「${sub.traineeName}」的簡答評分（總分 ${sub.totalScore} 分）`);
+          renderAdminWorkspace();
+          showToast(`已儲存「${sub.traineeName}」的批改成績（總分 ${sub.totalScore} 分）`);
+        });
+      });
+    }
+
+    function renderAdminTrainees(subsList) {
+      if (els.adminNewTraineeHireDate && !els.adminNewTraineeHireDate.value) {
+        els.adminNewTraineeHireDate.value = getTodayString();
+      }
+
+      const traineesList = Object.values(state.trainees);
+      els.adminTraineeCountBadge.textContent = `共 ${traineesList.length} 位學員`;
+
+      // Render Trainees List
+      els.adminTraineesListContainer.innerHTML = traineesList.map((tr) => {
+        const doneCount = TRAINING_ITEMS.filter((it) => tr.entries?.[it.id]?.checked).length;
+        const pct = Math.round((doneCount / TRAINING_ITEMS.length) * 100);
+        const examCount = subsList.filter((s) => s.traineeId === tr.id).length;
+        const isCurrent = tr.id === state.activeTraineeId;
+        const confirmDelTrainee = state.pendingDeleteConfirmId === `tr_${tr.id}`;
+        const confirmDelAll = state.pendingDeleteConfirmId === `tr_all_${tr.id}`;
+
+        return `
+          <div class="border ${isCurrent ? "border-amber-400 bg-amber-50/30" : "border-slate-200 bg-slate-50/50"} rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
+            <div class="space-y-1">
+              <div class="flex flex-wrap items-center gap-1.5">
+                <strong class="text-sm text-slate-900">${escapeHtml(tr.name || "未命名學員")}</strong>
+                ${tr.empId ? `<span class="px-2 py-0.5 rounded bg-slate-200 text-slate-700 font-mono text-[11px]">員編：${escapeHtml(tr.empId)}</span>` : ""}
+                ${isCurrent ? `<span class="px-2 py-0.5 rounded bg-amber-400 text-slate-950 font-bold text-[10px]">目前選取中</span>` : ""}
+              </div>
+              <div class="text-[11px] text-slate-600 flex flex-wrap gap-x-3 gap-y-0.5">
+                <span>到職日：${escapeHtml(tr.hireDate || "未設定")}</span>
+                <span>小老師(負責人)：${escapeHtml(tr.mentor || "未設定")}</span>
+                <span>訓練進度：<strong class="text-emerald-700">${doneCount}/${TRAINING_ITEMS.length} (${pct}%)</strong></span>
+                <span>考試紀錄：<strong class="text-indigo-700">${examCount} 筆</strong></span>
+              </div>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-1.5 shrink-0">
+              <button type="button" data-admin-select-tr="${escapeHtml(tr.id)}"
+                class="px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 font-semibold text-slate-700">
+                切換檢視
+              </button>
+
+              ${confirmDelTrainee ? `
+                <button type="button" data-admin-confirm-del-tr="${escapeHtml(tr.id)}" data-del-exams="0"
+                  class="px-2.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold animate-pulse">
+                  確定只刪學員？
+                </button>
+                <button type="button" data-admin-cancel-del="1"
+                  class="px-2 py-1.5 rounded-lg bg-slate-200 text-slate-700 font-semibold">
+                  取消
+                </button>
+              ` : `
+                <button type="button" data-admin-ask-del="tr_${escapeHtml(tr.id)}"
+                  class="px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-semibold">
+                  刪除學員
+                </button>
+              `}
+
+              ${examCount > 0 ? (confirmDelAll ? `
+                <button type="button" data-admin-confirm-del-tr="${escapeHtml(tr.id)}" data-del-exams="1"
+                  class="px-2.5 py-1.5 rounded-lg bg-rose-700 hover:bg-rose-800 text-white font-bold animate-pulse">
+                  確定連同 ${examCount} 筆考卷全刪？
+                </button>
+                <button type="button" data-admin-cancel-del="1"
+                  class="px-2 py-1.5 rounded-lg bg-slate-200 text-slate-700 font-semibold">
+                  取消
+                </button>
+              ` : `
+                <button type="button" data-admin-ask-del="tr_all_${escapeHtml(tr.id)}"
+                  class="px-2.5 py-1.5 rounded-lg bg-rose-100 hover:bg-rose-200 border border-rose-300 text-rose-800 font-bold">
+                  連同考卷全刪
+                </button>
+              `) : ""}
+            </div>
+          </div>
+        `;
+      }).join("");
+
+      // Populate Trainee Filter for Exam Records
+      const currentFilter = state.adminRecordTraineeFilter;
+      els.adminRecordTraineeFilter.innerHTML = `<option value="ALL">全部學員考卷紀錄 (${subsList.length} 筆)</option>` +
+        traineesList.map((tr) => {
+          const cnt = subsList.filter((s) => s.traineeId === tr.id).length;
+          return `<option value="${escapeHtml(tr.id)}" ${currentFilter === tr.id ? "selected" : ""}>${escapeHtml(tr.name || "未命名學員")}${tr.empId ? ` [${tr.empId}]` : ""} (${cnt} 筆)</option>`;
+        }).join("");
+
+      // Render Exam Records List for Deletion
+      let filteredSubs = [...subsList].sort((a, b) => (b.submittedAt || "").localeCompare(a.submittedAt || ""));
+      if (currentFilter !== "ALL") {
+        filteredSubs = filteredSubs.filter((s) => s.traineeId === currentFilter);
+      }
+
+      if (filteredSubs.length === 0) {
+        els.adminExamRecordsListContainer.innerHTML = `<div class="text-xs text-slate-400 text-center py-6 bg-slate-50 rounded-xl">目前沒有符合條件的考試紀錄。</div>`;
+      } else {
+        els.adminExamRecordsListContainer.innerHTML = filteredSubs.map((s) => {
+          const confirmDelSub = state.pendingDeleteConfirmId === `sub_${s.id}`;
+          return `
+            <div class="border border-slate-200 rounded-xl px-3.5 py-2.5 bg-white flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div class="space-y-0.5">
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <span class="px-2 py-0.5 rounded bg-slate-900 text-amber-300 text-[11px] font-bold">${escapeHtml(s.examId)}</span>
+                  <strong class="text-slate-900">${escapeHtml(s.traineeName || "未命名學員")}</strong>
+                  ${s.empId ? `<span class="text-slate-500">（員編：${escapeHtml(s.empId)}）</span>` : ""}
+                  <span class="font-bold ${s.totalScore >= 80 ? "text-emerald-600" : "text-amber-600"}">得分：${s.totalScore}/${s.maxScore} 分</span>
+                </div>
+                <div class="text-[11px] text-slate-500">
+                  考卷：${escapeHtml(s.examTitle)}｜交卷時間：${escapeHtml(s.submittedAt || "-")}
+                </div>
+              </div>
+
+              <div class="flex items-center gap-1.5 shrink-0">
+                ${confirmDelSub ? `
+                  <button type="button" data-admin-confirm-del-sub="${escapeHtml(s.id)}"
+                    class="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold animate-pulse">
+                    確定永久刪除此考卷？
+                  </button>
+                  <button type="button" data-admin-cancel-del="1"
+                    class="px-2 py-1.5 rounded-lg bg-slate-200 text-slate-700 font-semibold">
+                    取消
+                  </button>
+                ` : `
+                  <button type="button" data-admin-ask-del="sub_${escapeHtml(s.id)}"
+                    class="px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-semibold">
+                    刪除考卷紀錄
+                  </button>
+                `}
+              </div>
+            </div>
+          `;
+        }).join("");
+      }
+
+      // Bind Trainee & Record Action Buttons
+      els.adminTraineesListContainer.querySelectorAll("button[data-admin-select-tr]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          state.activeTraineeId = btn.dataset.adminSelectTr;
+          saveLocalTrainees();
+          renderHeaderAndShared();
+          renderAdminWorkspace();
+          showToast(`已切換目前檢視學員為「${getCurrentTrainee().name}」`);
+        });
+      });
+
+      els.adminTraineesListContainer.querySelectorAll("button[data-admin-confirm-del-tr]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const trId = btn.dataset.adminConfirmDelTr;
+          const delExams = btn.dataset.delExams === "1";
+          state.pendingDeleteConfirmId = null;
+          await deleteTraineeById(trId, delExams);
+        });
+      });
+
+      els.adminExamRecordsListContainer.querySelectorAll("button[data-admin-confirm-del-sub]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const subId = btn.dataset.adminConfirmDelSub;
+          state.pendingDeleteConfirmId = null;
+          await deleteSubmissionById(subId, false);
+        });
+      });
+
+      els.adminTabTrainees.querySelectorAll("button[data-admin-ask-del]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          state.pendingDeleteConfirmId = btn.dataset.adminAskDel;
+          renderAdminWorkspace();
+        });
+      });
+
+      els.adminTabTrainees.querySelectorAll("button[data-admin-cancel-del]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          state.pendingDeleteConfirmId = null;
           renderAdminWorkspace();
         });
       });
@@ -2530,6 +2873,49 @@
     els.gradingStatusFilter.addEventListener("change", () => {
       state.gradingStatusFilter = els.gradingStatusFilter.value;
       renderAdminWorkspace();
+    });
+
+    els.adminRecordTraineeFilter.addEventListener("change", () => {
+      state.adminRecordTraineeFilter = els.adminRecordTraineeFilter.value;
+      state.pendingDeleteConfirmId = null;
+      renderAdminWorkspace();
+    });
+
+    els.adminCreateTraineeBtn.addEventListener("click", async () => {
+      const name = els.adminNewTraineeName.value.trim();
+      if (!name) {
+        showToast("請輸入學員姓名或英文名");
+        els.adminNewTraineeName.focus();
+        return;
+      }
+      const empId = els.adminNewTraineeEmpId.value.trim();
+      const hireDate = els.adminNewTraineeHireDate.value || getTodayString();
+      const mentor = els.adminNewTraineeMentor.value.trim();
+
+      const newId = `trainee_${Date.now()}`;
+      state.trainees[newId] = {
+        id: newId,
+        name,
+        empId,
+        hireDate,
+        mentor,
+        entries: {},
+        updatedAt: nowTimeString()
+      };
+      if (mentor) {
+        syncMentorAsOwner(state.trainees[newId], mentor);
+      }
+      state.activeTraineeId = newId;
+      saveLocalTrainees();
+      renderHeaderAndShared();
+
+      els.adminNewTraineeName.value = "";
+      els.adminNewTraineeEmpId.value = "";
+      els.adminNewTraineeMentor.value = "";
+
+      await persistCurrentTrainee();
+      renderAdminWorkspace();
+      showToast(`已新增學員「${name}」並同步至雲端`);
     });
 
     els.editorExamSelect.addEventListener("change", () => {
