@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>World Gym 板橋雙十｜客服教育訓練進度表 & 即時考核平台</title>
+  <title>V8.0 測試版 | World Gym 板橋雙十｜客服教育訓練進度表 & 即時考核平台</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     body {
@@ -50,6 +50,7 @@
           <button id="navExamBtn" type="button" class="nav-tab px-3 py-1.5 rounded-lg text-xs font-bold text-slate-300 hover:text-white transition">
             ✍️ 考試介面
           </button>
+          <button id="navLearningBtn" type="button" class="px-3 py-1.5 text-xs font-bold text-amber-300">📚 學習中心</button>
           <button id="navAdminBtn" type="button" class="nav-tab px-3 py-1.5 rounded-lg text-xs font-bold text-slate-300 hover:text-white transition">
             🔐 主管介面
           </button>
@@ -414,6 +415,7 @@
       <!-- Admin Top Sub-Nav -->
       <div class="bg-white border border-slate-200 rounded-xl p-2.5 shadow-2xs flex flex-wrap items-center justify-between gap-2">
         <div class="flex flex-wrap items-center gap-1.5">
+          <button data-admintab="V8" type="button" class="admin-subtab px-3 py-1.5 rounded-lg text-xs font-bold border">V8 人才管理</button>
           <button data-admintab="ANALYTICS" type="button" class="admin-subtab px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-900 text-amber-300">
             📊 成績總覽 & 錯題率分析
           </button>
@@ -442,6 +444,7 @@
       </div>
 
       <!-- ADMIN TAB 1: ANALYTICS & ERROR RATE -->
+      <div id="adminTabV8" class="hidden space-y-3"></div>
       <div id="adminTabAnalytics" class="space-y-4">
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div class="bg-white border border-slate-200 rounded-xl p-3.5">
@@ -654,6 +657,7 @@
     </div>
   </section>
 
+  <section id="viewLearning" class="hidden max-w-6xl mx-auto px-3 pt-4 space-y-3"></section>
   <!-- Toast Notification -->
   <div id="toastBox" class="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 pointer-events-none opacity-0 transition-opacity duration-200 bg-slate-900 text-amber-300 border border-amber-500/30 text-xs font-semibold px-4 py-2 rounded-full shadow-lg"></div>
 
@@ -1121,6 +1125,7 @@
         state.db = db;
         state.cloudReady = true;
         subscribeCloudData();
+        subscribeV8();
         renderHeaderAndShared();
         setSyncBadge("ok", "雲端已連線（免登入）");
       } catch (err) {
@@ -1384,7 +1389,7 @@
         PORTAL: els.viewPortal,
         TRAINING: els.viewTraining,
         EXAM: els.viewExam,
-        ADMIN: els.viewAdmin
+        ADMIN: els.viewAdmin, LEARNING: document.getElementById("viewLearning")
       };
       Object.entries(views).forEach(([key, el]) => {
         if (el) el.classList.toggle("hidden", key !== view);
@@ -1418,6 +1423,8 @@
           els.examLobbyCard.classList.remove("hidden");
           renderExamLobby();
         }
+      } else if (view === "LEARNING") {
+        renderV8(false);
       } else if (view === "ADMIN") {
         renderAdminView();
       }
@@ -2167,6 +2174,7 @@
           : "admin-subtab px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-200 text-slate-700 hover:bg-slate-50";
       });
       els.adminTabAnalytics.classList.toggle("hidden", tab !== "ANALYTICS");
+      document.getElementById("adminTabV8").classList.toggle("hidden",tab!=="V8");
       els.adminTabGrading.classList.toggle("hidden", tab !== "GRADING");
       els.adminTabEditor.classList.toggle("hidden", tab !== "EDITOR");
       els.adminTabTrainees.classList.toggle("hidden", tab !== "TRAINEES");
@@ -2177,6 +2185,7 @@
     }
 
     function renderAdminWorkspace() {
+      if(state.activeAdminTab==="V8" && state.isAdminAuthenticated) renderV8(true);
       const subsList = Object.values(state.submissions);
       els.kpiTotalAttempts.textContent = `${subsList.length} 次`;
       const avg = subsList.length
@@ -3092,6 +3101,67 @@
 
     window.addEventListener("resize", syncStickyOffsets);
 
+    // V8 extension: independent collection, no migration of existing records.
+    let v8records={}, v8ready=false, v8tab='today', v8admin='dashboard';
+    const v8el=id=>document.getElementById(id), h=escapeHtml;
+    const btn=(label,action)=>`<button type="button" data-v8="${h(action)}" class="px-3 py-2 rounded-lg bg-slate-900 text-amber-300 text-xs font-bold">${h(label)}</button>`;
+    const field=(id,label,type='text',value='')=>`<label class="block text-xs font-bold">${h(label)}<input id="${id}" type="${type}" value="${h(value)}" class="block w-full border rounded-lg p-2 mt-1 text-slate-900"></label>`;
+    const panel=(title,body)=>`<div class="bg-white text-slate-900 border rounded-xl p-4 space-y-3"><h3 class="font-bold">${h(title)}</h3>${body}</div>`;
+    const recs=kind=>Object.values(v8records).filter(r=>r.kind===kind);
+    const val=id=>v8el(id)?.value.trim()||'';
+    const tid=()=>getCurrentTrainee().id;
+    const personal=kind=>recs(kind).filter(r=>r.traineeId===tid());
+    const archived=id=>!!v8records['archive_'+id]?.archived;
+    const people=()=>Object.values(state.trainees).filter(t=>!archived(t.id));
+    const days=t=>t.hireDate?Math.floor((Date.now()-new Date(t.hireDate+'T00:00:00').getTime())/86400000)+1:0;
+    const dueDays=i=>({W1:7,W2:14,W3:21,W4:28,W5_W6:42}[i.stage]||42);
+    const todo=t=>TRAINING_ITEMS.filter(i=>!t.entries[i.id]?.checked);
+    const overdue=t=>todo(t).filter(i=>days(t)>dueDays(i));
+    const pct=t=>Math.round(100*(TRAINING_ITEMS.length-todo(t).length)/Math.max(1,TRAINING_ITEMS.length));
+    const uid=()=>crypto.randomUUID();
+    function v8ref(id){return doc(state.db,'artifacts',state.appId,'public','data','v8Records',id);}
+    function subscribeV8(){onSnapshot(collection(state.db,'artifacts',state.appId,'public','data','v8Records'),{includeMetadataChanges:true},s=>{if(s.metadata.fromCache||s.metadata.hasPendingWrites)return;v8records={};s.forEach(d=>v8records[d.id]={...d.data(),id:d.id});v8ready=true;refreshV8();},e=>{v8ready=false;showToast('V8 雲端讀取失敗：'+e.message);});}
+    async function v8save(id,data,admin=true){if(admin&&!state.isAdminAuthenticated)throw Error('需要主管登入');if(!v8ready)throw Error('V8 雲端尚未連線');const actor=state.isAdminAuthenticated?'主管（共用帳號）':getCurrentTrainee().name; await runTransaction(state.db,async tx=>{const r=v8ref(id),s=await tx.get(r);tx.set(r,{...data,updatedAt:new Date().toISOString()},{merge:true});tx.set(v8ref('audit_'+uid()),{kind:'audit',target:id,actor,action:data.kind,at:new Date().toISOString(),before:s.exists()?JSON.stringify(s.data()):''});});showToast('已儲存至雲端');}
+    function refreshV8(){if(state.activeView==='LEARNING')renderV8(false);if(state.activeView==='ADMIN'&&state.isAdminAuthenticated&&state.activeAdminTab==='V8')renderV8(true);}
+    const lines=xs=>xs.length?xs.join(''):'<p class="text-xs text-slate-500">目前沒有資料</p>';
+    const line=(s,extra='')=>`<div class="border-b py-2 flex flex-wrap items-center justify-between gap-2 text-sm"><span>${h(s)}</span>${extra}</div>`;
+    function wrongs(){return Object.values(state.submissions).filter(s=>s.traineeId===tid()).flatMap(s=>Object.entries(s.results||{}).filter(([k,r])=>r.isCorrect===false).map(([k,r])=>({q:state.examBank[s.examId]?.questions?.find(q=>q.id===k),s,k})));}
+    function renderV8(admin){const root=v8el(admin?'adminTabV8':'viewLearning');if(!root)return;const t=getCurrentTrainee();const tabs=admin?{dashboard:'主管總覽',schedule:'學習排程',sop:'SOP 管理',notice:'公告管理',practice:'實務考核',cert:'資格認證',repeat:'定期複訓',archive:'封存與備份',audit:'異動紀錄'}:{today:'今日任務',sop:'SOP 知識中心',notice:'公告中心',mock:'模擬考試',wrong:'個人錯題本',growth:'成長報告',repeat:'定期複訓'};const active=admin?v8admin:v8tab;let b=`<div class="flex flex-wrap gap-2">${Object.entries(tabs).map(([k,v])=>btn(v,(admin?'A:':'U:')+k)).join('')}</div><p class="text-xs text-slate-500">${v8ready?'V8 雲端已連線':'V8 雲端尚未就緒，暫不可儲存'}｜${h(t.name)}｜本版沿用既有權限，尚非獨立帳號驗證</p>`;
+    if(active==='dashboard'){b+=panel('全體教育訓練總覽',lines(people().map(p=>line(`${p.name}｜${pct(p)}%｜${days(p)?overdue(p).length?'🔴 逾期 '+overdue(p).length+' 項':'🟢 無逾期':'⚪ 未設定到職日'}｜待培訓 ${TRAINING_ITEMS.filter(i=>p.entries[i.id]?.checked&&!p.entries[i.id]?.trainerChecked).length}｜待主任 ${TRAINING_ITEMS.filter(i=>p.entries[i.id]?.trainerChecked&&!p.entries[i.id]?.directorChecked).length}`,btn('查看','select:'+p.id))))+`<p>待批改考卷：${Object.values(state.submissions).filter(s=>!s.essayGraded).length} 份</p>`);}
+    if(active==='schedule'||active==='today'){const plans=personal('plan').sort((a,b)=>a.date.localeCompare(b.date));b+=panel('學習排程', (admin?field('vdate','排程起始日','date',getTodayString())+field('vminutes','每天訓練分鐘','number','60')+field('vunit','每項預估分鐘','number','20')+btn('依未完成項目產生排程','generate'):'')+lines(plans.flatMap(p=>p.items.map(i=>line(`${p.date}｜${TRAINING_ITEMS.find(x=>x.id===i)?.item||i}｜${t.entries[i]?.checked?'完成':'待學習'}`))))+`<p class="text-xs">未排程項目：${todo(t).length}；逾期：${overdue(t).length}。排程按日曆日分配，休假須另行調整。</p>`);}
+    if(active==='sop'){b+=panel('SOP 知識中心',(admin?`<select id="vsopid" class="border rounded p-2 w-full"><option value="">新增 SOP</option>${recs('sop').map(r=>`<option value="${h(r.id)}">${h(r.title)}</option>`).join('')}</select>`+field('vtitle','名稱')+field('vversion','版本','text','1.0')+`<textarea id="vbody" placeholder="操作步驟及注意事項" class="border rounded p-2 w-full" rows="5"></textarea>`+field('vlink','教學文件／圖片／影片 HTTPS 連結')+btn('儲存 SOP','sopSave'):'')+field('vsearch','搜尋 SOP')+`<div id="vsoplist">${sopList('')}</div>`);}
+    if(active==='notice'){b+=panel('SOP 公告及已讀確認',(admin?field('vtitle','公告標題')+`<textarea id="vbody" class="border rounded p-2 w-full" placeholder="公告內容"></textarea>`+btn('發布公告','noticeSave'):'')+lines(recs('notice').map(r=>`<div class="border rounded p-3"><b>${h(r.title)}</b><p class="whitespace-pre-wrap text-sm">${h(r.body)}</p>${admin?`<p class="text-xs">未讀：${h(people().filter(p=>!v8records['read_'+r.id+'_'+p.id]).map(p=>p.name).join('、')||'無')}</p>`:v8records['read_'+r.id+'_'+tid()]?'已讀':btn('確認已讀','read:'+r.id)}</div>`)));}
+    if(active==='practice'){b+=panel('實務操作評分',field('vtitle','考核項目')+field('vscore','分數 0–100','number','80')+field('vpass','及格標準','number','80')+field('vnote','評語')+btn('儲存考核','practiceSave')+lines(personal('practice').map(r=>line(`${r.title}｜${r.score} 分｜${r.score>=r.pass?'通過':'補強'}｜${r.note}`))));}
+    if(active==='cert'){b+=panel('獨立作業資格認證',field('vtitle','資格名稱')+`<select id="vstatus" class="border rounded p-2"><option>已認證</option><option>待認證</option><option>撤銷</option></select>`+btn('儲存資格','certSave')+lines(personal('cert').map(r=>line(r.title+'｜'+r.status))));}
+    if(active==='repeat'){b+=panel('定期複訓',(admin?field('vtitle','複訓主題')+field('vdate','截止日期','date',getTodayString())+field('vcycle','週期天數（0 為單次）','number','90')+btn('發布複訓','repeatSave'):'')+lines(recs('repeat').map(r=>{const done=v8records['repeatdone_'+r.id+'_'+tid()]?.date;const next=done&&r.cycle?new Date(new Date(done+'T00:00:00').getTime()+r.cycle*86400000).toISOString().slice(0,10):r.date;return line(`${r.title}｜${done&&!r.cycle?'已完成': '截止 '+next}｜${done?'上次 '+done:'未完成'}`,admin?'':btn('完成複訓','repeatDone:'+r.id));})));}
+    if(active==='wrong'){b+=panel('個人錯題與補強',lines(wrongs().map(({q,s,k})=>line(`${s.examId}｜${q?.question||k}｜${q?.explanation||'請向主管確認原題版本'}`))));}
+    if(active==='mock'){b+=panel('模擬考試（不計入正式成績）',EXAM_IDS.map(e=>btn(e,'mock:'+e)).join(' ')+'<div id="vmock"></div>');}
+    if(active==='growth'){b+=panel('個人成長報告',`<p>整體訓練：${pct(t)}%</p>`+lines(STAGES.filter(s=>s.id!=='ALL').map(s=>{const a=TRAINING_ITEMS.filter(i=>i.stage===s.id),n=a.filter(i=>t.entries[i.id]?.checked).length;return line(`${s.label}｜${n}/${a.length}`,`<progress max="${a.length||1}" value="${n}"></progress>`)}))+lines(personal('practice').map(r=>line(`${r.title}｜${r.score} 分`)))+lines(personal('cert').map(r=>line(`${r.title}｜${r.status}`)))+btn('匯出個人成果','report'));}
+    if(active==='archive'){b+=panel('封存及備份',lines(Object.values(state.trainees).map(p=>line(`${p.name}｜${archived(p.id)?'已封存':'使用中'}`,btn(archived(p.id)?'恢復':'封存','archive:'+p.id))))+btn('下載 JSON 備份','backup')+'<p class="text-xs">封存只影響 V8 總覽，不會刪除原始資料。備份包含員工資料，請妥善保存；還原須由管理者確認後執行。</p>');}
+    if(active==='audit'){b+=panel('V8 異動紀錄',lines(recs('audit').sort((a,b)=>b.at.localeCompare(a.at)).slice(0,100).map(r=>line(`${r.at}｜${r.actor}｜${r.action}｜${r.target}`))));}
+    root.innerHTML=b;}
+    function sopList(q){return lines(recs('sop').filter(r=>(r.title+' '+r.body).toLowerCase().includes(q.toLowerCase())).map(r=>`<div class="border rounded p-3"><b>${h(r.title)} V${h(r.version)}</b><p class="whitespace-pre-wrap text-sm">${h(r.body)}</p>${/^https:\/\//i.test(r.link||'')?`<a class="text-blue-700 underline" target="_blank" rel="noopener noreferrer" href="${h(r.link)}">開啟教學附件</a>`:''}</div>`));}
+    function exportV8(name,data){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}
+    document.addEventListener('input',e=>{if(e.target.id==='vsearch')v8el('vsoplist').innerHTML=sopList(e.target.value);});
+    document.addEventListener('change',e=>{if(e.target.id==='vsopid'){const r=v8records[e.target.value]||{};for(const [k,v] of Object.entries({vtitle:r.title,vversion:r.version,vbody:r.body,vlink:r.link}))v8el(k).value=v||'';}});
+    document.addEventListener('click',async e=>{const a=e.target.closest('[data-v8]')?.dataset.v8;if(!a)return;const [op,id]=a.split(':');try{if(op==='A'){v8admin=id;renderV8(true);return;}if(op==='U'){v8tab=id;renderV8(false);return;}if(op==='select'){state.activeTraineeId=id;renderHeaderAndShared();renderV8(true);return;}const title=val('vtitle'),date=val('vdate');if(['sopSave','noticeSave','practiceSave','certSave','repeatSave'].includes(op)&&!title)throw Error('請輸入名稱');
+    if(op==='generate'){const m=Number(val('vminutes')),u=Number(val('vunit'));if(!date||!Number.isFinite(m)||!Number.isFinite(u)||u<1||m<u)throw Error('請確認日期及分鐘數');const n=Math.floor(m/u),items=todo(getCurrentTrainee()).sort((a,b)=>dueDays(a)-dueDays(b));for(let j=0;j<items.length;j+=n){const d=new Date(date+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+Math.floor(j/n));const day=d.toISOString().slice(0,10);await v8save('plan_'+tid()+'_'+day,{kind:'plan',traineeId:tid(),date:day,items:items.slice(j,j+n).map(i=>i.id)});}}
+    if(op==='sopSave'){const link=val('vlink');if(link&&!/^https:\/\//i.test(link))throw Error('附件需為 HTTPS 連結');await v8save(val('vsopid')||uid(),{kind:'sop',title,version:val('vversion')||'1.0',body:val('vbody'),link});}
+    if(op==='noticeSave')await v8save(uid(),{kind:'notice',title,body:val('vbody')});
+    if(op==='read')await v8save('read_'+id+'_'+tid(),{kind:'read',traineeId:tid(),noticeId:id},false);
+    if(op==='practiceSave'){const score=Number(val('vscore')),pass=Number(val('vpass'));if(!val('vscore')||!val('vpass')||![score,pass].every(x=>Number.isFinite(x)&&x>=0&&x<=100))throw Error('分數須介於 0–100');await v8save(uid(),{kind:'practice',traineeId:tid(),title,score,pass,note:val('vnote')});}
+    if(op==='certSave')await v8save('cert_'+tid()+'_'+encodeURIComponent(title),{kind:'cert',traineeId:tid(),title,status:val('vstatus')});
+    if(op==='repeatSave'){const cycle=Number(val('vcycle'));if(!date||!Number.isInteger(cycle)||cycle<0)throw Error('請確認日期及週期');await v8save(uid(),{kind:'repeat',title,date,cycle});}
+    if(op==='repeatDone')await v8save('repeatdone_'+id+'_'+tid(),{kind:'repeatdone',traineeId:tid(),date:getTodayString()},false);
+    if(op==='archive')await v8save('archive_'+id,{kind:'archive',traineeId:id,archived:!archived(id)});
+    if(op==='backup'&&state.isAdminAuthenticated)exportV8('WG-backup.json',{trainees:state.trainees,examBank:state.examBank,submissions:state.submissions,catalog:catalogData(),v8records});
+    if(op==='report')exportV8('WG-personal-report.json',{trainee:getCurrentTrainee(),completion:pct(getCurrentTrainee()),practice:personal('practice'),certificates:personal('cert'),exams:Object.values(state.submissions).filter(s=>s.traineeId===tid())});
+    if(op==='mock'){const qs=(state.examBank[id]?.questions||[]).filter(q=>q.type==='mcq');v8el('vmock').innerHTML=qs.map((q,i)=>`<fieldset class="border p-2 my-2"><legend>${h(q.question)}</legend>${q.options.map((o,j)=>`<label class="block"><input type="radio" name="mock${i}" value="${j}"> ${h(o)}</label>`).join('')}</fieldset>`).join('')+btn('核對答案','mockGrade:'+id);}
+    if(op==='mockGrade'){const qs=(state.examBank[id]?.questions||[]).filter(q=>q.type==='mcq');const correct=qs.filter((q,i)=>document.querySelector(`input[name="mock${i}"]:checked`)?.value===String(q.correctIndex)).length;v8el('vmock').innerHTML=panel(`答對 ${correct}/${qs.length}`,lines(qs.map(q=>line(q.question+'｜答案：'+q.options[q.correctIndex]+'｜'+(q.explanation||'')))));}
+    }catch(err){showToast(err.message||String(err));}});
+
+    document.getElementById("navLearningBtn").addEventListener("click",()=>switchView("LEARNING"));
+    els.traineeSelect.addEventListener("change",refreshV8);
     loadPersistentState();
     switchView("PORTAL");
     initFirebase();
