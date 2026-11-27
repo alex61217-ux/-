@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>V8.0 測試版 | World Gym 板橋雙十｜客服教育訓練進度表 & 即時考核平台</title>
+  <title>V9.0 考卷管理先行測試版 | World Gym 板橋雙十｜客服教育訓練進度表 & 即時考核平台</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     body {
@@ -526,6 +526,11 @@
             </div>
           </div>
 
+          <div class="border border-amber-300 bg-amber-50 rounded-xl p-3 space-y-2">
+            <h4 class="font-bold text-sm">獨立考卷管理｜目前狀態：<span id="examLifecycle"></span></h4>
+            <div class="flex flex-wrap gap-2"><input id="newExamTitle" placeholder="輸入新考卷名稱" class="border rounded p-2 text-xs flex-1" maxlength="120"><button id="createExam" class="bg-slate-900 text-amber-300 rounded p-2 text-xs">＋ 新增考卷</button><button id="copyExam" class="border rounded p-2 text-xs">複製目前考卷</button><button id="publishExam" class="bg-emerald-700 text-white rounded p-2 text-xs">發布／恢復</button><button id="archiveExam" class="border rounded p-2 text-xs">封存／下架</button></div>
+            <p class="text-xs text-slate-600">新考卷預設草稿，新增題目及設定完成後再發布。封存不會刪除歷史成績。新發布考卷目前對所有可使用考試介面的人開放。</p>
+          </div>
           <div class="grid grid-cols-1 sm:grid-cols-12 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
             <div class="sm:col-span-6">
               <label class="block text-[11px] font-semibold text-slate-600 mb-1">考卷名稱</label>
@@ -684,7 +689,21 @@
     const ADMIN_AUTH_STORAGE_KEY = "wg_banqiao_admin_session_v1";
     const ADMIN_PWD_STORAGE_KEY = "wg_banqiao_admin_pwd_v1";
     const DEFAULT_ADMIN_PWD = "wg8888";
-    const EXAM_IDS = ["W1", "W2", "W3", "W4", "W5", "W6"];
+    const BASE_EXAM_IDS = ["W1", "W2", "W3", "W4", "W5", "W6"];
+    const EXAM_IDS = [...BASE_EXAM_IDS];
+    let examCloudReady = false;
+    const publishedExamIds = () => EXAM_IDS.filter(id => state.examBank[id] && !["draft","archived"].includes(state.examBank[id].status));
+    function refreshExamSelectors(){
+      const extra = Object.keys(state.examBank).filter(id=>!BASE_EXAM_IDS.includes(id) && id!=="W5_W6");
+      EXAM_IDS.splice(0,EXAM_IDS.length,...BASE_EXAM_IDS,...extra);
+      for(const [el,ids,all] of [[els.examItemSelect,publishedExamIds(),false],[els.editorExamSelect,EXAM_IDS,false],[els.analyticsExamFilter,EXAM_IDS,true]]){
+        const old=el.value; el.replaceChildren();
+        if(all)el.add(new Option("全部考卷","ALL"));
+        ids.forEach(id=>{const e=state.examBank[id];if(e)el.add(new Option((BASE_EXAM_IDS.includes(id)?id+"｜":"")+e.title+(e.status==="draft"?"（草稿）":e.status==="archived"?"（封存）":""),id));});
+        if([...el.options].some(o=>o.value===old))el.value=old;
+      }
+    }
+
 
     const STAGES = [
       { id: "ALL", label: "全部階段", exam: "W1~W6" },
@@ -1209,6 +1228,15 @@
     });
     function subscribeCloudData() {
       if (!state.cloudReady || !state.db) return;
+      onSnapshot(collection(state.db,"artifacts",state.appId,"public","data","examBank"), {includeMetadataChanges:true}, snap=>{
+        if(snap.metadata.fromCache || snap.metadata.hasPendingWrites)return;
+        examCloudReady=true;
+        snap.forEach(d=>{const e=d.data();if(Array.isArray(e.questions))state.examBank[d.id]={...e,id:d.id};});
+        saveLocalExamBank();refreshExamSelectors();
+        if(state.activeView==="EXAM"&&!state.activeExamId)renderExamLobby();
+        if(state.activeView==="ADMIN"&&state.isAdminAuthenticated&&state.activeAdminTab!=="EDITOR")renderAdminWorkspace();
+        if(state.activeView==="LEARNING")refreshV8();
+      },err=>{examCloudReady=false;showToast("考卷雲端讀取失敗："+err.message);});
 
       onSnapshot(doc(state.db, "artifacts", state.appId, "public", "data", "settings", "trainingCatalog"), {includeMetadataChanges:true}, snap => {
         if (snap.metadata.fromCache || snap.metadata.hasPendingWrites) return;
@@ -1752,7 +1780,7 @@
       if (document.activeElement !== els.examEnglishNameInput) els.examEnglishNameInput.value = t.name || "";
       if (document.activeElement !== els.examEmpIdInput) els.examEmpIdInput.value = t.empId || "";
 
-      els.examCardsGrid.innerHTML = EXAM_IDS.map((eid) => {
+      els.examCardsGrid.innerHTML = publishedExamIds().map((eid) => {
         const ex = state.examBank[eid];
         if (!ex) return "";
         const qs = ex.questions || [];
@@ -1840,6 +1868,7 @@
     }
 
     function validateAndStartExam(examId) {
+      if(!publishedExamIds().includes(examId)||!state.examBank[examId]?.questions?.length)return showToast("考卷尚未開放或沒有題目");
       const engName = els.examEnglishNameInput.value.trim();
       const empId = els.examEmpIdInput.value.trim();
       if (!engName) {
@@ -1854,6 +1883,8 @@
       }
 
       const t = getCurrentTrainee();
+      if((t.empId && t.empId.toLowerCase()!==empId.toLowerCase()) || (t.empId && t.name.trim().toLowerCase()!==engName.toLowerCase()))return showToast("應考資料與選取的學員不符，請先切換學員檔案");
+      if(Object.values(state.trainees).some(x=>x.id!==t.id&&x.empId&&x.empId.toLowerCase()===empId.toLowerCase()))return showToast("此員編已有學員檔案，請先切換");
       t.name = engName;
       t.empId = empId;
       persistCurrentTrainee();
@@ -1865,6 +1896,8 @@
       if (!ex) return;
       const t = getCurrentTrainee();
 
+      state.activeExamSnapshot=JSON.parse(JSON.stringify(ex));
+      state.activeExamTrainee=JSON.parse(JSON.stringify(t));
       state.activeExamId = examId;
       state.examStartedAt = Date.now();
       state.examDraftAnswers = {};
@@ -1915,7 +1948,7 @@
     }
 
     function renderRunnerQuestions() {
-      const ex = state.examBank[state.activeExamId];
+      const ex = state.activeExamId ? (state.activeExamSnapshot || state.examBank[state.activeExamId]) : null;
       if (!ex) return;
 
       els.runnerQuestionsList.innerHTML = (ex.questions || []).map((q, idx) => {
@@ -2010,11 +2043,11 @@
     }
 
     async function submitActiveExam() {
-      const ex = state.examBank[state.activeExamId];
+      const ex = state.activeExamId ? (state.activeExamSnapshot || state.examBank[state.activeExamId]) : null;
       if (!ex) return;
       clearInterval(state.examTimerInterval);
 
-      const t = getCurrentTrainee();
+      const t = state.activeExamTrainee || getCurrentTrainee();
       const timeSpentSec = Math.max(1, Math.floor((Date.now() - state.examStartedAt) / 1000));
       let autoScore = 0;
       let maxScore = 0;
@@ -2053,6 +2086,7 @@
         mentor: t.mentor || "",
         examId: ex.id,
         examTitle: ex.title,
+        examSnapshot: ex,
         submittedAt: `${getTodayString()} ${new Date().toTimeString().slice(0, 5)}`,
         timeSpentSec,
         autoScore,
@@ -2073,7 +2107,7 @@
       const sub = state.submissions[subId];
       if (!sub) return;
       state.lastResultSubId = subId;
-      const ex = state.examBank[sub.examId] || { title: sub.examTitle, questions: [] };
+      const ex = sub.examSnapshot || state.examBank[sub.examId] || { title: sub.examTitle, questions: [] };
 
       els.examLobbyCard.classList.add("hidden");
       els.examRunnerCard.classList.add("hidden");
@@ -2283,7 +2317,7 @@
       }
 
       els.submissionsListContainer.innerHTML = list.map((sub) => {
-        const ex = state.examBank[sub.examId] || { questions: [] };
+        const ex = sub.examSnapshot || state.examBank[sub.examId] || { questions: [] };
         const shortQs = (ex.questions || []).filter((q) => q.type === "short");
 
         const shortHtml = shortQs.map((q, idx) => {
@@ -2558,7 +2592,10 @@
       const ex = state.examBank[eid];
       if (!ex) return;
 
+      refreshExamSelectors();
       els.editorExamSelect.value = eid;
+      document.getElementById("examLifecycle").textContent = ex.status==="draft"?"草稿":ex.status==="archived"?"封存":"已發布";
+      els.resetDefaultExamBtn.hidden=!BASE_EXAM_IDS.includes(eid);
       els.editorExamTitleInput.value = ex.title || "";
       els.editorDurationInput.value = ex.durationMinutes || 20;
       els.editorPassingInput.value = ex.passingScore || 80;
@@ -3022,6 +3059,37 @@
       showToast(`已新增學員「${name}」並同步至雲端`);
     });
 
+    async function manageExam(action){
+      if(!state.isAdminAuthenticated)return showToast("請先登入主管介面");
+      if(!examCloudReady)return showToast("請等待考卷雲端連線成功後再操作");
+      const old=state.examBank[state.editorExamId];
+      let id=state.editorExamId, next;
+      if(action==="create"||action==="copy"){
+        const title=document.getElementById("newExamTitle").value.trim();
+        if(action==="create"&&!title)return showToast("請輸入考卷名稱");
+        if(action==="copy"&&!old)return;
+        id="EX_"+crypto.randomUUID().replace(/-/g,"");
+        next=action==="copy"?JSON.parse(JSON.stringify(old)):{durationMinutes:20,passingScore:80,questions:[]};
+        next={...next,id,title:title||old.title+"（副本）",status:"draft"};
+      }else{
+        if(!old)return;
+        next=JSON.parse(JSON.stringify(old));
+        if(action==="publish"){
+          const qs=next.questions||[];
+          if(!qs.length||qs.some(q=>!q.question?.trim()||q.question==="請輸入新考題題目..."))return showToast("請完成題目內容後再發布");
+          const total=qs.reduce((a,q)=>a+Number(q.points||0),0);
+          if(total!==100)return showToast("發布前請將總配分調整為100分，目前："+total);
+          next.status="published";
+        }else{if(!confirm("確定封存此考卷？歷史成績將保留。"))return;next.status="archived";}
+      }
+      const buttons=["createExam","copyExam","publishExam","archiveExam"].map(id=>document.getElementById(id));buttons.forEach(b=>b.disabled=true);
+      try{
+        await setDoc(doc(state.db,"artifacts",state.appId,"public","data","examBank",id),next);
+        state.examBank[id]=next;state.editorExamId=id;saveLocalExamBank();refreshExamSelectors();renderAdminEditor();
+        document.getElementById("newExamTitle").value="";showToast("考卷管理設定已同步至雲端");
+      }catch(err){showToast("考卷操作失敗："+err.message);}finally{buttons.forEach(b=>b.disabled=false);}
+    }
+    [["createExam","create"],["copyExam","copy"],["publishExam","publish"],["archiveExam","archive"]].forEach(([id,a])=>document.getElementById(id).addEventListener("click",()=>manageExam(a)));
     els.editorExamSelect.addEventListener("change", () => {
       state.editorExamId = els.editorExamSelect.value;
       renderAdminEditor();
@@ -3035,6 +3103,7 @@
       ex.durationMinutes = Math.max(5, Number(els.editorDurationInput.value) || 20);
       ex.passingScore = Math.max(0, Math.min(100, Number(els.editorPassingInput.value) || 80));
       await persistExam(eid);
+      refreshExamSelectors();
       showToast("已儲存考卷設定");
     });
 
@@ -3044,7 +3113,7 @@
       if (!ex) return;
       ex.questions = ex.questions || [];
       ex.questions.push({
-        id: `${eid}_Q_${Date.now().toString().slice(-4)}`,
+        id: `${eid}_Q_${crypto.randomUUID()}`,
         type: "mcq",
         points: 5,
         question: "請輸入新考題題目...",
@@ -3135,7 +3204,7 @@
     if(active==='cert'){b+=panel('獨立作業資格認證',field('vtitle','資格名稱')+`<select id="vstatus" class="border rounded p-2"><option>已認證</option><option>待認證</option><option>撤銷</option></select>`+btn('儲存資格','certSave')+lines(personal('cert').map(r=>line(r.title+'｜'+r.status))));}
     if(active==='repeat'){b+=panel('定期複訓',(admin?field('vtitle','複訓主題')+field('vdate','截止日期','date',getTodayString())+field('vcycle','週期天數（0 為單次）','number','90')+btn('發布複訓','repeatSave'):'')+lines(recs('repeat').map(r=>{const done=v8records['repeatdone_'+r.id+'_'+tid()]?.date;const next=done&&r.cycle?new Date(new Date(done+'T00:00:00').getTime()+r.cycle*86400000).toISOString().slice(0,10):r.date;return line(`${r.title}｜${done&&!r.cycle?'已完成': '截止 '+next}｜${done?'上次 '+done:'未完成'}`,admin?'':btn('完成複訓','repeatDone:'+r.id));})));}
     if(active==='wrong'){b+=panel('個人錯題與補強',lines(wrongs().map(({q,s,k})=>line(`${s.examId}｜${q?.question||k}｜${q?.explanation||'請向主管確認原題版本'}`))));}
-    if(active==='mock'){b+=panel('模擬考試（不計入正式成績）',EXAM_IDS.map(e=>btn(e,'mock:'+e)).join(' ')+'<div id="vmock"></div>');}
+    if(active==='mock'){b+=panel('模擬考試（不計入正式成績）',publishedExamIds().map(e=>btn(e,'mock:'+e)).join(' ')+'<div id="vmock"></div>');}
     if(active==='growth'){b+=panel('個人成長報告',`<p>整體訓練：${pct(t)}%</p>`+lines(STAGES.filter(s=>s.id!=='ALL').map(s=>{const a=TRAINING_ITEMS.filter(i=>i.stage===s.id),n=a.filter(i=>t.entries[i.id]?.checked).length;return line(`${s.label}｜${n}/${a.length}`,`<progress max="${a.length||1}" value="${n}"></progress>`)}))+lines(personal('practice').map(r=>line(`${r.title}｜${r.score} 分`)))+lines(personal('cert').map(r=>line(`${r.title}｜${r.status}`)))+btn('匯出個人成果','report'));}
     if(active==='archive'){b+=panel('封存及備份',lines(Object.values(state.trainees).map(p=>line(`${p.name}｜${archived(p.id)?'已封存':'使用中'}`,btn(archived(p.id)?'恢復':'封存','archive:'+p.id))))+btn('下載 JSON 備份','backup')+'<p class="text-xs">封存只影響 V8 總覽，不會刪除原始資料。備份包含員工資料，請妥善保存；還原須由管理者確認後執行。</p>');}
     if(active==='audit'){b+=panel('V8 異動紀錄',lines(recs('audit').sort((a,b)=>b.at.localeCompare(a.at)).slice(0,100).map(r=>line(`${r.at}｜${r.actor}｜${r.action}｜${r.target}`))));}
@@ -3163,6 +3232,7 @@
     document.getElementById("navLearningBtn").addEventListener("click",()=>switchView("LEARNING"));
     els.traineeSelect.addEventListener("change",refreshV8);
     loadPersistentState();
+    refreshExamSelectors();
     switchView("PORTAL");
     initFirebase();
   </script>
